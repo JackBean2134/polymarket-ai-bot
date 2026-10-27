@@ -1,21 +1,38 @@
 # Polymarket AI 交易机器人 - 架构文档
 
+> 本文部分章节是原始设计设想，不代表这些流程已实现或可用于实盘。当前 CLI 提供离线 CSV 回测、只读行情/钱包/套利扫描、按订单簿逐档成交的纸面执行，以及显式开启的单笔小额实盘下单（默认 dry-run、硬上限 $25）。在线自动交易服务、持久化账本和完整对账仍未实现。请以 [README.md](README.md)、[LIVE_TRADING.md](LIVE_TRADING.md) 和 [REVIEW.md](REVIEW.md) 为准。
+
 ## 📁 项目结构
 
 ```
 polymarket/
 ├── client.go              # API 客户端核心（Gamma、Data、CLOB）
+├── decimal.go             # 真实 API 字符串/数字/数组兼容解析
 ├── gamma.go               # Gamma API 服务（市场数据发现）
 ├── data.go                # Data API 服务（用户数据和持仓）
-├── clob.go                # CLOB API 服务（订单簿和交易）
+├── clob.go                # CLOB API 服务（订单簿/价格/历史；下单默认关闭）
 ├── analyzer.go            # 市场数据分析引擎
 ├── predictor.go           # AI 预测模型
-├── strategy.go            # 交易策略引擎
-├── risk.go                # 风险管理系统
+├── strategy.go            # 策略引擎（默认纸面成交）
+├── risk.go                # 风险管理（金额审批、资金释放）
+├── paper_executor.go      # 逐档撮合、VWAP、部分成交
+├── features.go            # logit 特征、ROC/ATR/EMA/Aroon、入场过滤
+├── calibration.go         # Brier/log loss/可靠性分桶
+├── research.go            # 已结算市场 + 历史价格采集
+├── research_samples.go    # 时间点样本、市场价/logit 双基线
+├── research_assessment.go # 事件分组 holdout、bootstrap、最终决策
+├── decision_log.go        # signal/fill/skip JSONL 审计
+├── safety.go              # STOP、心跳、白名单辅助
+├── order_signing.go       # EIP-712 订单签名（官方向量验证）
+├── live_executor.go       # 单笔实盘提交、轮询与撤单
+├── arbitrage.go           # YES/NO 与 negRisk 篮子套利扫描
 ├── config.go              # 配置管理
 ├── monitor.go             # 监控和日志系统
-├── bot.go                 # 机器人主引擎
-├── main.go                # 程序入口
+├── backtest.go            # 离线 CSV 回测
+├── cmd/main.go            # 程序入口
+├── examples/demo.go       # 配置/风控演示
+├── REVIEW.md              # 代码审查与盈利可行性分析
+├── LIVE_TRADING.md        # 实盘检查清单
 ├── polymarket_test.go     # 单元测试
 ├── README.md              # 使用文档
 ├── ARCHITECTURE.md        # 架构文档（本文件）
@@ -293,9 +310,9 @@ type RiskMetrics struct {
 - 支持加密存储（未来功能）
 
 ### 2. 交易保护
-- 默认模拟模式（Paper Trading）
-- 需要显式启用实盘模式
-- 多层风险评估
+- 当前命令行不执行模拟或实盘交易
+- 实盘模式及交易开关会被 CLI 拒绝
+- 风险模块尚未通过真实订单/结算流程验证
 
 ### 3. 错误处理
 - 所有 API 调用带重试机制
@@ -349,25 +366,14 @@ type RiskMetrics struct {
 - 延迟基准测试
 - 内存使用分析
 
-## 📦 部署选项
+## 📦 当前可运行入口
 
-### 1. 本地运行
+仓库目前只支持测试和离线回测，不提供可部署的交易服务。请从仓库根目录运行：
+
 ```bash
-go run main.go -config=polymarket_config.json
+go test ./...
+go run ./cmd -backtest .\signals.csv -capital 10000 -stake 100 -min-edge 0.05 -fee-bps 200 -slippage-bps 100
 ```
-
-### 2. Docker 部署（未来）
-```dockerfile
-FROM golang:1.21
-COPY . /app
-RUN go build -o bot .
-CMD ["./bot"]
-```
-
-### 3. 云服务部署
-- Railway
-- Heroku
-- AWS/GCP/Azure
 
 ## 🚀 扩展指南
 

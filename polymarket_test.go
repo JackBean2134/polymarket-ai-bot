@@ -2,6 +2,7 @@ package polymarket
 
 import (
 	"context"
+	"math"
 	"testing"
 	"time"
 )
@@ -28,12 +29,12 @@ func TestNewClient(t *testing.T) {
 
 func TestNewRiskManager(t *testing.T) {
 	config := &RiskConfig{
-		TotalCapital:       10000,
-		MaxPositionSize:    500,
-		DailyLossLimit:     500,
-		MaxDrawdown:        0.15,
-		KellyMultiplier:    0.25,
-		MinConfidence:      50.0,
+		TotalCapital:    10000,
+		MaxPositionSize: 500,
+		DailyLossLimit:  500,
+		MaxDrawdown:     0.15,
+		KellyMultiplier: 0.25,
+		MinConfidence:   50.0,
 	}
 
 	rm := NewRiskManager(config)
@@ -48,10 +49,10 @@ func TestNewRiskManager(t *testing.T) {
 
 func TestRiskManagerCanTrade(t *testing.T) {
 	rm := NewRiskManager(&RiskConfig{
-		TotalCapital:     10000,
-		DailyLossLimit:   500,
-		MaxDrawdown:      0.15,
-		DailyTradeLimit:  20,
+		TotalCapital:    10000,
+		DailyLossLimit:  500,
+		MaxDrawdown:     0.15,
+		DailyTradeLimit: 20,
 	})
 
 	if !rm.CanTrade() {
@@ -66,8 +67,8 @@ func TestRiskManagerCanTrade(t *testing.T) {
 
 func TestKellyFraction(t *testing.T) {
 	rm := NewRiskManager(&RiskConfig{
-		TotalCapital:      10000,
-		KellyMultiplier:   0.25,
+		TotalCapital:    10000,
+		KellyMultiplier: 0.25,
 	})
 
 	signal := &TradingSignal{
@@ -86,6 +87,18 @@ func TestKellyFraction(t *testing.T) {
 
 	if size > 500 {
 		t.Errorf("Expected position size <= 500, got %f", size)
+	}
+
+	noSignal := &TradingSignal{
+		Assessment: &ValueAssessment{
+			AIProbability:     0.35,
+			MarketImpliedProb: 0.50,
+			Edge:              -0.15,
+		},
+	}
+	noSize := rm.CalculatePositionSize(noSignal)
+	if noSize <= 0 || noSize > 500 {
+		t.Errorf("Expected a capped positive NO-side position, got %f", noSize)
 	}
 }
 
@@ -173,9 +186,9 @@ func TestPositionManagement(t *testing.T) {
 
 func TestRiskMetrics(t *testing.T) {
 	rm := NewRiskManager(&RiskConfig{
-		TotalCapital:    10000,
-		MaxDrawdown:     0.15,
-		DailyLossLimit:  500,
+		TotalCapital:   10000,
+		MaxDrawdown:    0.15,
+		DailyLossLimit: 500,
 	})
 
 	rm.UpdatePnL(200)
@@ -191,15 +204,16 @@ func TestRiskMetrics(t *testing.T) {
 		t.Errorf("Expected daily PnL 100, got %f", metrics.DailyPnL)
 	}
 
-	if metrics.CurrentDrawdown != 0 {
-		t.Errorf("Expected current drawdown 0, got %f", metrics.CurrentDrawdown)
+	expectedDrawdown := 100.0 / 10200.0
+	if math.Abs(metrics.CurrentDrawdown-expectedDrawdown) > 1e-9 {
+		t.Errorf("Expected current drawdown %f, got %f", expectedDrawdown, metrics.CurrentDrawdown)
 	}
 }
 
 func TestDrawdownControl(t *testing.T) {
 	rm := NewRiskManager(&RiskConfig{
-		TotalCapital:    10000,
-		MaxDrawdown:     0.15,
+		TotalCapital: 10000,
+		MaxDrawdown:  0.15,
 	})
 
 	rm.UpdatePnL(-1600)
@@ -300,9 +314,9 @@ func TestLatencyTracking(t *testing.T) {
 
 func BenchmarkKellyCalculation(b *testing.B) {
 	rm := NewRiskManager(&RiskConfig{
-		TotalCapital:      10000,
-		KellyMultiplier:   0.25,
-		MaxPositionSize:   500,
+		TotalCapital:    10000,
+		KellyMultiplier: 0.25,
+		MaxPositionSize: 500,
 	})
 
 	signal := &TradingSignal{

@@ -1,0 +1,400 @@
+{
+  "markets": 320,
+  "histories": 320,
+  "market_samples": 883,
+  "logit_samples": 883,
+  "skipped": 397,
+  "market_calibration": {
+    "samples": 883,
+    "brier_score": 0.2411532678369191,
+    "log_loss": 0.672316102541576,
+    "base_rate": 0.5039637599093998,
+    "mean_prediction": 0.45348244620611544,
+    "buckets": [
+      {
+        "lower": 0,
+        "upper": 0.1,
+        "count": 129,
+        "avg_predicted": 0.0051744186046511625,
+        "observed_rate": 0.031007751937984496,
+        "gap": 0.025833333333333333
+      },
+      {
+        "lower": 0.1,
+        "upper": 0.2,
+        "count": 23,
+        "avg_predicted": 0.14869565217391306,
+        "observed_rate": 0.34782608695652173,
+        "gap": 0.19913043478260867
+      },
+      {
+        "lower": 0.2,
+        "upper": 0.3,
+        "count": 52,
+        "avg_predicted": 0.2473653846153846,
+        "observed_rate": 0.6538461538461539,
+        "gap": 0.40648076923076926
+      },
+      {
+        "lower": 0.3,
+        "upper": 0.4,
+        "count": 105,
+        "avg_predicted": 0.35272857142857156,
+        "observed_rate": 0.6285714285714286,
+        "gap": 0.275842857142857
+      },
+      {
+        "lower": 0.4,
+        "upper": 0.5,
+        "count": 144,
+        "avg_predicted": 0.4565972222222222,
+        "observed_rate": 0.5763888888888888,
+        "gap": 0.11979166666666663
+      },
+      {
+        "lower": 0.5,
+        "upper": 0.6,
+        "count": 194,
+        "avg_predicted": 0.5515979381443299,
+        "observed_rate": 0.5721649484536082,
+        "gap": 0.020567010309278322
+      },
+      {
+        "lower": 0.6,
+        "upper": 0.7,
+        "count": 103,
+        "avg_predicted": 0.634402912621359,
+        "observed_rate": 0.5922330097087378,
+        "gap": -0.04216990291262113
+      },
+      {
+        "lower": 0.7,
+        "upper": 0.8,
+        "count": 78,
+        "avg_predicted": 0.7503269230769228,
+        "observed_rate": 0.5128205128205128,
+        "gap": -0.23750641025641006
+      },
+      {
+        "lower": 0.8,
+        "upper": 0.9,
+        "count": 29,
+        "avg_predicted": 0.8482758620689654,
+        "observed_rate": 0.4482758620689655,
+        "gap": -0.3999999999999999
+      },
+      {
+        "lower": 0.9,
+        "upper": 1,
+        "count": 26,
+        "avg_predicted": 0.9695769230769234,
+        "observed_rate": 0.9615384615384616,
+        "gap": -0.008038461538461883
+      }
+    ]
+  },
+  "logit_calibration": {
+    "samples": 883,
+    "brier_score": 0.24115757879423613,
+    "log_loss": 0.6758155555810874,
+    "base_rate": 0.5039637599093998,
+    "mean_prediction": 0.4533912570972951,
+    "buckets": [
+      {
+        "lower": 0,
+        "upper": 0.1,
+        "count": 133,
+        "avg_predicted": 0.007013296316606755,
+        "observed_rate": 0.03007518796992481,
+        "gap": 0.023061891653318053
+      },
+      {
+        "lower": 0.1,
+        "upper": 0.2,
+        "count": 20,
+        "avg_predicted": 0.1518663444737717,
+        "observed_rate": 0.45,
+        "gap": 0.2981336555262283
+      },
+      {
+        "lower": 0.2,
+        "upper": 0.3,
+        "count": 55,
+        "avg_predicted": 0.2500431479287731,
+        "observed_rate": 0.6545454545454545,
+        "gap": 0.40450230661668146
+      },
+      {
+        "lower": 0.3,
+        "upper": 0.4,
+        "count": 95,
+        "avg_predicted": 0.3527484009182529,
+        "observed_rate": 0.6210526315789474,
+        "gap": 0.26830423066069453
+      },
+      {
+        "lower": 0.4,
+        "upper": 0.5,
+        "count": 154,
+        "avg_predicted": 0.45526192752540523,
+        "observed_rate": 0.5909090909090909,
+        "gap": 0.1356471633836857
+      },
+      {
+        "lower": 0.5,
+        "upper": 0.6,
+        "count": 190,
+        "avg_predicted": 0.5530791345130199,
+        "observed_rate": 0.5631578947368421,
+        "gap": 0.010078760223822147
+      },
+      {
+        "lower": 0.6,
+        "upper": 0.7,
+        "count": 102,
+        "avg_predicted": 0.6338441811595288,
+        "observed_rate": 0.5980392156862745,
+        "gap": -0.03580496547325429
+      },
+      {
+        "lower": 0.7,
+        "upper": 0.8,
+        "count": 77,
+        "avg_predicted": 0.7497650385459405,
+        "observed_rate": 0.5194805194805194,
+        "gap": -0.23028451906542102
+      },
+      {
+        "lower": 0.8,
+        "upper": 0.9,
+        "count": 30,
+        "avg_predicted": 0.8437219926311726,
+        "observed_rate": 0.4,
+        "gap": -0.4437219926311726
+      },
+      {
+        "lower": 0.9,
+        "upper": 1,
+        "count": 27,
+        "avg_predicted": 0.9711061804585177,
+        "observed_rate": 0.9629629629629629,
+        "gap": -0.0081432174955548
+      }
+    ]
+  },
+  "market_holdout": {
+    "samples": 335,
+    "brier_score": 0.23292439701492534,
+    "log_loss": 0.6269110395943357,
+    "base_rate": 0.3761194029850746,
+    "mean_prediction": 0.4111313432835822,
+    "buckets": [
+      {
+        "lower": 0,
+        "upper": 0.1,
+        "count": 74,
+        "avg_predicted": 0.004486486486486487,
+        "observed_rate": 0.013513513513513514,
+        "gap": 0.009027027027027026
+      },
+      {
+        "lower": 0.1,
+        "upper": 0.2,
+        "count": 13,
+        "avg_predicted": 0.15730769230769234,
+        "observed_rate": 0.23076923076923078,
+        "gap": 0.07346153846153844
+      },
+      {
+        "lower": 0.2,
+        "upper": 0.3,
+        "count": 24,
+        "avg_predicted": 0.24437500000000004,
+        "observed_rate": 0.7916666666666666,
+        "gap": 0.5472916666666666
+      },
+      {
+        "lower": 0.3,
+        "upper": 0.4,
+        "count": 38,
+        "avg_predicted": 0.3527631578947368,
+        "observed_rate": 0.5,
+        "gap": 0.14723684210526322
+      },
+      {
+        "lower": 0.4,
+        "upper": 0.5,
+        "count": 35,
+        "avg_predicted": 0.4574285714285713,
+        "observed_rate": 0.6285714285714286,
+        "gap": 0.17114285714285726
+      },
+      {
+        "lower": 0.5,
+        "upper": 0.6,
+        "count": 72,
+        "avg_predicted": 0.5567361111111111,
+        "observed_rate": 0.3194444444444444,
+        "gap": -0.23729166666666668
+      },
+      {
+        "lower": 0.6,
+        "upper": 0.7,
+        "count": 31,
+        "avg_predicted": 0.6326935483870968,
+        "observed_rate": 0.3870967741935484,
+        "gap": -0.24559677419354842
+      },
+      {
+        "lower": 0.7,
+        "upper": 0.8,
+        "count": 21,
+        "avg_predicted": 0.7416904761904762,
+        "observed_rate": 0.38095238095238093,
+        "gap": -0.3607380952380953
+      },
+      {
+        "lower": 0.8,
+        "upper": 0.9,
+        "count": 11,
+        "avg_predicted": 0.843181818181818,
+        "observed_rate": 0.36363636363636365,
+        "gap": -0.4795454545454544
+      },
+      {
+        "lower": 0.9,
+        "upper": 1,
+        "count": 16,
+        "avg_predicted": 0.9701875000000001,
+        "observed_rate": 0.9375,
+        "gap": -0.03268750000000009
+      }
+    ]
+  },
+  "logit_holdout": {
+    "samples": 335,
+    "brier_score": 0.23261220556866546,
+    "log_loss": 0.6264308499341245,
+    "base_rate": 0.3761194029850746,
+    "mean_prediction": 0.4104893846613542,
+    "buckets": [
+      {
+        "lower": 0,
+        "upper": 0.1,
+        "count": 75,
+        "avg_predicted": 0.005044603327596649,
+        "observed_rate": 0.013333333333333334,
+        "gap": 0.008288730005736685
+      },
+      {
+        "lower": 0.1,
+        "upper": 0.2,
+        "count": 13,
+        "avg_predicted": 0.15700128876383582,
+        "observed_rate": 0.3076923076923077,
+        "gap": 0.1506910189284719
+      },
+      {
+        "lower": 0.2,
+        "upper": 0.3,
+        "count": 25,
+        "avg_predicted": 0.24675065494334067,
+        "observed_rate": 0.76,
+        "gap": 0.5132493450566593
+      },
+      {
+        "lower": 0.3,
+        "upper": 0.4,
+        "count": 33,
+        "avg_predicted": 0.35489991500973606,
+        "observed_rate": 0.48484848484848486,
+        "gap": 0.1299485698387488
+      },
+      {
+        "lower": 0.4,
+        "upper": 0.5,
+        "count": 40,
+        "avg_predicted": 0.4536672449177567,
+        "observed_rate": 0.625,
+        "gap": 0.17133275508224333
+      },
+      {
+        "lower": 0.5,
+        "upper": 0.6,
+        "count": 70,
+        "avg_predicted": 0.5580757232825578,
+        "observed_rate": 0.3142857142857143,
+        "gap": -0.24379000899684355
+      },
+      {
+        "lower": 0.6,
+        "upper": 0.7,
+        "count": 32,
+        "avg_predicted": 0.6329764931528353,
+        "observed_rate": 0.40625,
+        "gap": -0.22672649315283533
+      },
+      {
+        "lower": 0.7,
+        "upper": 0.8,
+        "count": 18,
+        "avg_predicted": 0.739771262028706,
+        "observed_rate": 0.3888888888888889,
+        "gap": -0.3508823731398171
+      },
+      {
+        "lower": 0.8,
+        "upper": 0.9,
+        "count": 13,
+        "avg_predicted": 0.83739170564119,
+        "observed_rate": 0.3076923076923077,
+        "gap": -0.5296993979488823
+      },
+      {
+        "lower": 0.9,
+        "upper": 1,
+        "count": 16,
+        "avg_predicted": 0.9715565744948131,
+        "observed_rate": 0.9375,
+        "gap": -0.03405657449481314
+      }
+    ]
+  },
+  "brier_improvement_logit_vs_market": -0.000004310957317038566,
+  "holdout_brier_improvement_logit_vs_market": 0.0003121914462598796,
+  "sample_markets": 309,
+  "assessment": {
+    "decision": "NO_EDGE",
+    "reasons": [
+      "model does not beat the market baseline on the full sample",
+      "model does not beat the market baseline on the event-group holdout",
+      "holdout bootstrap 95% interval includes zero"
+    ],
+    "sample_markets": 309,
+    "holdout_markets": 110,
+    "min_markets": 300,
+    "min_holdout_markets": 75,
+    "full_bootstrap": {
+      "markets": 309,
+      "clusters": 255,
+      "iterations": 2000,
+      "mean_brier_improvement": -0.000419304227355606,
+      "lower_95": -0.0011875425513479484,
+      "upper_95": 0.00034386245127007595
+    },
+    "holdout_bootstrap": {
+      "markets": 110,
+      "clusters": 77,
+      "iterations": 2000,
+      "mean_brier_improvement": -0.00030855906957898203,
+      "lower_95": -0.0018727937703663143,
+      "upper_95": 0.001202904506238718
+    },
+    "markdown_path": "reports\\research_summary.md"
+  },
+  "market_csv": "reports\\samples_market.csv",
+  "logit_csv": "reports\\samples_logit.csv",
+  "holdout_market_csv": "reports\\samples_market_holdout.csv",
+  "holdout_logit_csv": "reports\\samples_logit_holdout.csv",
+  "report_json": "reports\\sample_summary.json"
+}

@@ -1,0 +1,336 @@
+timestamp,market_id,market_yes_price,model_yes_probability,resolved_outcome,market_title
+2026-09-28T02:00:16Z,601821,0.0005,0.0005,NO,Will Fernando Haddad win the 2026 Brazilian presidential election?
+2026-09-28T07:00:15Z,601818,0.0005,0.0005,NO,Will Tarcisio de Freitas win the 2026 Brazilian presidential election?
+2026-09-28T07:00:15Z,601820,0.0005,0.0005,NO,Will Jair Bolsonaro win the 2026 Brazilian presidential election?
+2026-09-28T09:00:22Z,601822,0.0005,0.0005,NO,Will Michelle Bolsonaro win the 2026 Brazilian presidential election?
+2026-09-28T10:00:13Z,601835,0.0005,0.0005,NO,Will Pablo Marçal win the 2026 Brazilian presidential election?
+2026-09-28T10:00:15Z,601824,0.0005,0.0005,NO,Will Carlos Roberto Massa Júnior win the 2026 Brazilian presidential election?
+2026-09-28T10:00:15Z,601833,0.0005,0.0005,NO,Will Tereza Cristina win the 2026 Brazilian presidential election?
+2026-09-28T10:00:15Z,601834,0.0005,0.0005,NO,Will Helder Barbalho win the 2026 Brazilian presidential election?
+2026-09-28T10:00:17Z,601823,0.0005,0.0005,NO,Will Eduardo Bolsonaro win the 2026 Brazilian presidential election?
+2026-09-28T11:00:18Z,601828,0.0005,0.0005,NO,Will Romeu Zema win the 2026 Brazilian presidential election?
+2026-09-28T11:00:19Z,601831,0.0005,0.0005,NO,Will Eduardo Leite win the 2026 Brazilian presidential election?
+2026-09-28T11:00:20Z,601832,0.0005,0.0005,NO,Will Aldo Rebelo win the 2026 Brazilian presidential election?
+2026-09-28T11:00:23Z,601827,0.0005,0.0005,NO,Will Ronaldo Caiado win the 2026 Brazilian presidential election?
+2026-09-28T12:00:15Z,601829,0.0005,0.0005,NO,Will Camilo Santana win the 2026 Brazilian presidential election?
+2026-09-28T12:00:19Z,601825,0.0035,0.0035,NO,Will Renan Santos win the 2026 Brazilian presidential election?
+2026-09-28T13:00:14Z,601836,0.0005,0.0005,NO,Will Augusto Cury win the 2026 Brazilian presidential election?
+2026-09-28T14:00:16Z,601830,0.0015,0.0015,NO,Will Geraldo Alckmin win the 2026 Brazilian presidential election?
+2026-09-28T22:00:15Z,4641064,0.968,0.968,YES,US x Iran ceasefire continues through September 30?
+2026-09-29T22:00:19Z,4641064,0.97,0.97,YES,US x Iran ceasefire continues through September 30?
+2026-09-30T16:00:20Z,4641064,0.9865,0.9865,YES,US x Iran ceasefire continues through September 30?
+2026-10-03T02:00:33Z,601821,0.0005,0.0005,NO,Will Fernando Haddad win the 2026 Brazilian presidential election?
+2026-10-03T07:00:32Z,601820,0.0005,0.0005,NO,Will Jair Bolsonaro win the 2026 Brazilian presidential election?
+2026-10-03T07:00:33Z,601818,0.0005,0.0005,NO,Will Tarcisio de Freitas win the 2026 Brazilian presidential election?
+2026-10-03T09:00:21Z,601822,0.0005,0.0005,NO,Will Michelle Bolsonaro win the 2026 Brazilian presidential election?
+2026-10-03T10:00:13Z,601835,0.0005,0.0005,NO,Will Pablo Marçal win the 2026 Brazilian presidential election?
+2026-10-03T10:00:15Z,601824,0.0005,0.0005,NO,Will Carlos Roberto Massa Júnior win the 2026 Brazilian presidential election?
+2026-10-03T10:00:15Z,601833,0.0005,0.0005,NO,Will Tereza Cristina win the 2026 Brazilian presidential election?
+2026-10-03T10:00:15Z,601834,0.0005,0.0005,NO,Will Helder Barbalho win the 2026 Brazilian presidential election?
+2026-10-03T10:00:20Z,601823,0.0005,0.0005,NO,Will Eduardo Bolsonaro win the 2026 Brazilian presidential election?
+2026-10-03T11:00:20Z,601831,0.0005,0.0005,NO,Will Eduardo Leite win the 2026 Brazilian presidential election?
+2026-10-03T11:00:20Z,601828,0.0005,0.0005,NO,Will Romeu Zema win the 2026 Brazilian presidential election?
+2026-10-03T11:00:21Z,601832,0.0005,0.0005,NO,Will Aldo Rebelo win the 2026 Brazilian presidential election?
+2026-10-03T11:00:24Z,601827,0.0005,0.0005,NO,Will Ronaldo Caiado win the 2026 Brazilian presidential election?
+2026-10-03T12:00:17Z,601829,0.0005,0.0005,NO,Will Camilo Santana win the 2026 Brazilian presidential election?
+2026-10-03T12:00:23Z,601825,0.0015,0.0015,NO,Will Renan Santos win the 2026 Brazilian presidential election?
+2026-10-03T13:00:18Z,601836,0.0005,0.0005,NO,Will Augusto Cury win the 2026 Brazilian presidential election?
+2026-10-03T14:00:34Z,601830,0.0015,0.0015,NO,Will Geraldo Alckmin win the 2026 Brazilian presidential election?
+2026-10-04T02:00:21Z,601821,0.0005,0.0005,NO,Will Fernando Haddad win the 2026 Brazilian presidential election?
+2026-10-04T07:00:16Z,601818,0.0005,0.0005,NO,Will Tarcisio de Freitas win the 2026 Brazilian presidential election?
+2026-10-04T07:00:16Z,601820,0.0005,0.0005,NO,Will Jair Bolsonaro win the 2026 Brazilian presidential election?
+2026-10-04T09:00:33Z,601822,0.0005,0.0005,NO,Will Michelle Bolsonaro win the 2026 Brazilian presidential election?
+2026-10-04T10:00:15Z,601835,0.0005,0.0005,NO,Will Pablo Marçal win the 2026 Brazilian presidential election?
+2026-10-04T10:00:17Z,601824,0.0005,0.0005,NO,Will Carlos Roberto Massa Júnior win the 2026 Brazilian presidential election?
+2026-10-04T10:00:17Z,601833,0.0005,0.0005,NO,Will Tereza Cristina win the 2026 Brazilian presidential election?
+2026-10-04T10:00:17Z,601834,0.0005,0.0005,NO,Will Helder Barbalho win the 2026 Brazilian presidential election?
+2026-10-04T10:00:21Z,601823,0.0005,0.0005,NO,Will Eduardo Bolsonaro win the 2026 Brazilian presidential election?
+2026-10-04T11:00:16Z,601831,0.0005,0.0005,NO,Will Eduardo Leite win the 2026 Brazilian presidential election?
+2026-10-04T11:00:16Z,601828,0.0005,0.0005,NO,Will Romeu Zema win the 2026 Brazilian presidential election?
+2026-10-04T11:00:18Z,601832,0.0005,0.0005,NO,Will Aldo Rebelo win the 2026 Brazilian presidential election?
+2026-10-04T11:00:20Z,601827,0.0005,0.0005,NO,Will Ronaldo Caiado win the 2026 Brazilian presidential election?
+2026-10-04T12:00:18Z,601829,0.0005,0.0005,NO,Will Camilo Santana win the 2026 Brazilian presidential election?
+2026-10-04T12:00:24Z,601825,0.0015,0.0015,NO,Will Renan Santos win the 2026 Brazilian presidential election?
+2026-10-04T13:00:18Z,601836,0.0005,0.0005,NO,Will Augusto Cury win the 2026 Brazilian presidential election?
+2026-10-04T14:00:21Z,601830,0.0015,0.0015,NO,Will Geraldo Alckmin win the 2026 Brazilian presidential election?
+2026-10-04T20:00:23Z,601821,0.0005,0.0005,NO,Will Fernando Haddad win the 2026 Brazilian presidential election?
+2026-10-05T01:00:16Z,601818,0.0005,0.0005,NO,Will Tarcisio de Freitas win the 2026 Brazilian presidential election?
+2026-10-05T01:00:16Z,601820,0.0005,0.0005,NO,Will Jair Bolsonaro win the 2026 Brazilian presidential election?
+2026-10-05T03:00:21Z,601822,0.0005,0.0005,NO,Will Michelle Bolsonaro win the 2026 Brazilian presidential election?
+2026-10-05T04:00:12Z,601835,0.0005,0.0005,NO,Will Pablo Marçal win the 2026 Brazilian presidential election?
+2026-10-05T04:00:14Z,601824,0.0005,0.0005,NO,Will Carlos Roberto Massa Júnior win the 2026 Brazilian presidential election?
+2026-10-05T04:00:14Z,601833,0.0005,0.0005,NO,Will Tereza Cristina win the 2026 Brazilian presidential election?
+2026-10-05T04:00:14Z,601834,0.0005,0.0005,NO,Will Helder Barbalho win the 2026 Brazilian presidential election?
+2026-10-05T04:00:18Z,601823,0.0005,0.0005,NO,Will Eduardo Bolsonaro win the 2026 Brazilian presidential election?
+2026-10-05T05:00:23Z,601831,0.0005,0.0005,NO,Will Eduardo Leite win the 2026 Brazilian presidential election?
+2026-10-05T05:00:23Z,601828,0.0005,0.0005,NO,Will Romeu Zema win the 2026 Brazilian presidential election?
+2026-10-05T05:00:25Z,601832,0.0005,0.0005,NO,Will Aldo Rebelo win the 2026 Brazilian presidential election?
+2026-10-05T05:00:27Z,601827,0.0005,0.0005,NO,Will Ronaldo Caiado win the 2026 Brazilian presidential election?
+2026-10-05T06:00:17Z,601829,0.0005,0.0005,NO,Will Camilo Santana win the 2026 Brazilian presidential election?
+2026-10-05T06:00:22Z,601825,0.0005,0.0005,NO,Will Renan Santos win the 2026 Brazilian presidential election?
+2026-10-05T07:00:17Z,601836,0.0005,0.0005,NO,Will Augusto Cury win the 2026 Brazilian presidential election?
+2026-10-05T08:00:20Z,601830,0.0015,0.0015,NO,Will Geraldo Alckmin win the 2026 Brazilian presidential election?
+2026-10-05T23:00:30Z,5234660,0.895,0.895,YES,US x Iran ceasefire continues through October 12?
+2026-10-08T22:00:23Z,5130978,0.925,0.925,YES,US x Iran ceasefire continues through October 15?
+2026-10-10T23:00:43Z,5234660,0.9465,0.9465,YES,US x Iran ceasefire continues through October 12?
+2026-10-11T23:00:35Z,5234660,0.974,0.974,YES,US x Iran ceasefire continues through October 12?
+2026-10-12T17:00:28Z,5234660,0.993,0.993,YES,US x Iran ceasefire continues through October 12?
+2026-10-13T22:00:28Z,5130978,0.974,0.974,YES,US x Iran ceasefire continues through October 15?
+2026-10-14T22:00:25Z,5130978,0.976,0.976,YES,US x Iran ceasefire continues through October 15?
+2026-10-15T16:00:37Z,5130978,0.9905,0.9905,YES,US x Iran ceasefire continues through October 15?
+2026-10-16T03:00:25Z,4465810,0.54,0.54,NO,Patriots vs. Bears
+2026-10-17T13:00:26Z,5533914,0.57,0.57,NO,Will Manchester City FC win on 2026-10-24?
+2026-10-17T15:00:26Z,5534122,0.705,0.705,YES,Will Arsenal FC win on 2026-10-24?
+2026-10-17T18:00:45Z,5534599,0.535,0.535,NO,Will Chelsea FC win on 2026-10-24?
+2026-10-17T21:00:24Z,5522973,0.505,0.505,YES,"UFC 333: Alexander Volkanovski vs. Movsar Evloev (Featherweight, Main Card)"
+2026-10-17T21:00:39Z,5523020,0.605,0.605,NO,"UFC 333: Merab Dvalishvili vs. Petr Yan (Bantamweight, Main Card)"
+2026-10-18T03:00:41Z,5624513,0.565,0.565,NO,Ole Miss vs. Texas
+2026-10-18T16:00:36Z,4551269,0.445,0.445,YES,Steelers vs. Saints
+2026-10-18T17:00:42Z,5594284,0.32,0.32,NO,Will Sunderland AFC win on 2026-10-25?
+2026-10-18T17:00:45Z,5594290,0.375,0.375,NO,Will Leeds United FC win on 2026-10-25?
+2026-10-18T19:00:35Z,4551285,0.44,0.44,YES,Browns vs. Titans
+2026-10-18T19:00:38Z,4551275,0.565,0.565,YES,Buccaneers vs. Panthers
+2026-10-18T19:00:39Z,4551277,0.76,0.76,YES,Giants vs. Texans
+2026-10-18T19:00:39Z,4551273,0.585,0.585,YES,Bengals vs. Ravens
+2026-10-18T19:00:39Z,4551272,0.305,0.305,NO,49ers vs. Falcons
+2026-10-18T22:00:19Z,5599705,0.59,0.59,NO,FC Barcelona vs. Real Madrid CF: O/U 4.5
+2026-10-18T22:00:24Z,5598475,0.635,0.635,NO,Will FC Barcelona win on 2026-10-25?
+2026-10-18T22:00:24Z,5598478,0.145,0.145,NO,Will FC Barcelona vs. Real Madrid CF end in a draw?
+2026-10-18T22:00:25Z,5598481,0.205,0.205,YES,Will Real Madrid CF win on 2026-10-25?
+2026-10-18T23:00:14Z,4551293,0.61,0.61,NO,Packers vs. Lions
+2026-10-18T23:00:19Z,4551294,0.32,0.32,YES,Rams vs. Raiders
+2026-10-19T02:00:24Z,5686979,0.945,0.945,YES,US x Iran ceasefire continues through October 22?
+2026-10-19T03:00:20Z,601826,0.7865,0.7865,NO,Will Flávio Bolsonaro win the 2026 Brazilian presidential election?
+2026-10-19T03:00:26Z,4551296,0.55,0.55,NO,Chiefs vs. Seahawks
+2026-10-19T03:00:27Z,5340070,0.26,0.26,NO,Will Flávio Bolsonaro win the second round of the 2026 Brazilian presidential election by 4–8%?
+2026-10-19T03:00:34Z,601819,0.215,0.215,YES,Will Luiz Inácio Lula da Silva win the 2026 Brazilian presidential election?
+2026-10-19T05:00:32Z,4824600,0.665,0.665,NO,Will Aleksandar Vučić – United Serbia win the most seats in the 2026 Serbian parliamentary election?
+2026-10-19T05:00:33Z,5340069,0.07,0.07,NO,Will Flávio Bolsonaro win the second round of the 2026 Brazilian presidential election by 8–12%?
+2026-10-19T05:00:35Z,4824602,0.315,0.315,YES,Will Student List – Students Win win the most seats in the 2026 Serbian parliamentary election?
+2026-10-19T05:00:37Z,5340071,0.39,0.39,NO,Will Flávio Bolsonaro win the second round of the 2026 Brazilian presidential election by less than 4%?
+2026-10-20T02:00:21Z,5642600,0.5,0.5,NO,Atlanta Dream vs. Golden State Valkyries
+2026-10-21T02:00:37Z,5765055,0.555,0.555,NO,Cavaliers vs. 76ers
+2026-10-21T03:00:36Z,4465810,0.605,0.605,NO,Patriots vs. Bears
+2026-10-21T04:00:36Z,5769220,0.735,0.735,NO,Nuggets vs. Thunder
+2026-10-21T18:00:30Z,5906195,0.225,0.225,YES,LoL: Gen.G vs Invictus Gaming (BO1) - Worlds Group Stage
+2026-10-21T19:00:24Z,5906220,0.225,0.225,YES,LoL: Hanwha Life Esports vs Top Esports (BO1) - Worlds Group Stage
+2026-10-21T20:00:48Z,5906238,0.175,0.175,NO,LoL: Bilibili Gaming vs Movistar KOI (BO1) - Worlds Group Stage
+2026-10-21T21:00:34Z,5906208,0.345,0.345,NO,LoL: Anyone's Legend vs Karmine Corp (BO1) - Worlds Group Stage
+2026-10-21T22:00:24Z,5906214,0.605,0.605,NO,LoL: G2 Esports vs Dplus KIA (BO1) - Worlds Group Stage
+2026-10-21T22:00:27Z,5792081,0.46,0.46,YES,Bulls vs. Bucks
+2026-10-21T23:00:23Z,4465810,0.605,0.605,NO,Patriots vs. Bears
+2026-10-21T23:00:25Z,5792078,0.49,0.49,YES,Pistons vs. Heat
+2026-10-21T23:00:28Z,5906201,0.285,0.285,NO,LoL: Team Liquid vs CTBC Flying Oyster (BO1) - Worlds Group Stage
+2026-10-21T23:00:28Z,5906232,0.585,0.585,NO,LoL: Team Secret Whales vs LYON (BO1) - Worlds Group Stage
+2026-10-21T23:00:28Z,5792075,0.34,0.34,YES,Raptors vs. Wizards
+2026-10-21T23:00:29Z,5792072,0.435,0.435,YES,Timberwolves vs. Magic
+2026-10-21T23:00:31Z,5792063,0.555,0.555,NO,Knicks vs. Celtics
+2026-10-21T23:00:32Z,5765055,0.575,0.575,NO,Cavaliers vs. 76ers
+2026-10-21T23:00:32Z,5906226,0.875,0.875,NO,LoL: LOS vs T1 (BO1) - Worlds Group Stage
+2026-10-22T04:00:30Z,5769220,0.735,0.735,NO,Nuggets vs. Thunder
+2026-10-22T04:00:30Z,5797980,0.685,0.685,YES,Rockets vs. Spurs
+2026-10-22T04:00:31Z,5797983,0.555,0.555,NO,Pelicans vs. Jazz
+2026-10-22T05:00:22Z,5797986,0.655,0.655,YES,Grizzlies vs. Warriors
+2026-10-22T13:00:39Z,5533914,0.595,0.595,NO,Will Manchester City FC win on 2026-10-24?
+2026-10-22T16:00:19Z,5534122,0.685,0.685,YES,Will Arsenal FC win on 2026-10-24?
+2026-10-22T16:00:21Z,5906195,0.225,0.225,YES,LoL: Gen.G vs Invictus Gaming (BO1) - Worlds Group Stage
+2026-10-22T19:00:34Z,5534599,0.575,0.575,NO,Will Chelsea FC win on 2026-10-24?
+2026-10-22T19:00:37Z,5906220,0.215,0.215,YES,LoL: Hanwha Life Esports vs Top Esports (BO1) - Worlds Group Stage
+2026-10-22T20:00:27Z,5765055,0.565,0.565,NO,Cavaliers vs. 76ers
+2026-10-22T20:00:27Z,5906238,0.185,0.185,NO,LoL: Bilibili Gaming vs Movistar KOI (BO1) - Worlds Group Stage
+2026-10-22T21:00:17Z,4465810,0.595,0.595,NO,Patriots vs. Bears
+2026-10-22T21:00:24Z,5906208,0.345,0.345,NO,LoL: Anyone's Legend vs Karmine Corp (BO1) - Worlds Group Stage
+2026-10-22T21:00:32Z,5523020,0.585,0.585,NO,"UFC 333: Merab Dvalishvili vs. Petr Yan (Bantamweight, Main Card)"
+2026-10-22T22:00:22Z,5522973,0.505,0.505,YES,"UFC 333: Alexander Volkanovski vs. Movsar Evloev (Featherweight, Main Card)"
+2026-10-22T22:00:24Z,5906214,0.605,0.605,NO,LoL: G2 Esports vs Dplus KIA (BO1) - Worlds Group Stage
+2026-10-22T22:00:26Z,5769220,0.735,0.735,NO,Nuggets vs. Thunder
+2026-10-22T22:00:27Z,5792081,0.515,0.515,YES,Bulls vs. Bucks
+2026-10-22T23:00:35Z,5906201,0.285,0.285,NO,LoL: Team Liquid vs CTBC Flying Oyster (BO1) - Worlds Group Stage
+2026-10-22T23:00:38Z,5906226,0.875,0.875,NO,LoL: LOS vs T1 (BO1) - Worlds Group Stage
+2026-10-23T01:00:22Z,5847746,0.395,0.395,NO,Heat vs. Hornets
+2026-10-23T01:00:24Z,5792075,0.315,0.315,YES,Raptors vs. Wizards
+2026-10-23T01:00:25Z,5906232,0.585,0.585,NO,LoL: Team Secret Whales vs LYON (BO1) - Worlds Group Stage
+2026-10-23T01:00:25Z,5792072,0.465,0.465,YES,Timberwolves vs. Magic
+2026-10-23T02:00:15Z,5792078,0.495,0.495,YES,Pistons vs. Heat
+2026-10-23T02:00:20Z,5792063,0.555,0.555,NO,Knicks vs. Celtics
+2026-10-23T03:00:27Z,5847758,0.535,0.535,YES,Wizards vs. Bulls
+2026-10-23T03:00:39Z,5847755,0.47,0.47,YES,Rockets vs. Hawks
+2026-10-23T03:00:44Z,5624513,0.605,0.605,NO,Ole Miss vs. Texas
+2026-10-23T04:00:24Z,5861664,0.615,0.615,NO,Warriors vs. Suns
+2026-10-23T04:00:25Z,5797980,0.655,0.655,YES,Rockets vs. Spurs
+2026-10-23T04:00:26Z,5861655,0.795,0.795,NO,Pelicans vs. Nuggets
+2026-10-23T04:00:26Z,5797983,0.555,0.555,NO,Pelicans vs. Jazz
+2026-10-23T05:00:21Z,5797986,0.575,0.575,YES,Grizzlies vs. Warriors
+2026-10-23T12:00:36Z,5906195,0.225,0.225,YES,LoL: Gen.G vs Invictus Gaming (BO1) - Worlds Group Stage
+2026-10-23T13:00:29Z,5906220,0.235,0.235,YES,LoL: Hanwha Life Esports vs Top Esports (BO1) - Worlds Group Stage
+2026-10-23T13:00:30Z,5533914,0.605,0.605,NO,Will Manchester City FC win on 2026-10-24?
+2026-10-23T14:00:30Z,5906238,0.195,0.195,NO,LoL: Bilibili Gaming vs Movistar KOI (BO1) - Worlds Group Stage
+2026-10-23T15:00:51Z,5906208,0.355,0.355,NO,LoL: Anyone's Legend vs Karmine Corp (BO1) - Worlds Group Stage
+2026-10-23T16:00:20Z,5534122,0.675,0.675,YES,Will Arsenal FC win on 2026-10-24?
+2026-10-23T16:00:23Z,5906214,0.605,0.605,NO,LoL: G2 Esports vs Dplus KIA (BO1) - Worlds Group Stage
+2026-10-23T16:00:23Z,4551269,0.385,0.385,YES,Steelers vs. Saints
+2026-10-23T16:00:27Z,5792081,0.525,0.525,YES,Bulls vs. Bucks
+2026-10-23T17:00:53Z,5906201,0.285,0.285,NO,LoL: Team Liquid vs CTBC Flying Oyster (BO1) - Worlds Group Stage
+2026-10-23T18:00:40Z,5594284,0.325,0.325,NO,Will Sunderland AFC win on 2026-10-25?
+2026-10-23T18:00:47Z,5594290,0.385,0.385,NO,Will Leeds United FC win on 2026-10-25?
+2026-10-23T18:00:56Z,5906226,0.875,0.875,NO,LoL: LOS vs T1 (BO1) - Worlds Group Stage
+2026-10-23T19:00:45Z,5534599,0.535,0.535,NO,Will Chelsea FC win on 2026-10-24?
+2026-10-23T19:00:46Z,5792078,0.465,0.465,YES,Pistons vs. Heat
+2026-10-23T19:00:47Z,4551275,0.585,0.585,YES,Buccaneers vs. Panthers
+2026-10-23T19:00:48Z,4551277,0.805,0.805,YES,Giants vs. Texans
+2026-10-23T19:00:48Z,5906232,0.585,0.585,NO,LoL: Team Secret Whales vs LYON (BO1) - Worlds Group Stage
+2026-10-23T19:00:48Z,4551272,0.415,0.415,NO,49ers vs. Falcons
+2026-10-23T19:00:48Z,5792075,0.255,0.255,YES,Raptors vs. Wizards
+2026-10-23T19:00:49Z,4551273,0.505,0.505,YES,Bengals vs. Ravens
+2026-10-23T19:00:49Z,5792072,0.515,0.515,YES,Timberwolves vs. Magic
+2026-10-23T19:00:50Z,5792063,0.555,0.555,NO,Knicks vs. Celtics
+2026-10-23T20:00:57Z,4551285,0.455,0.455,YES,Browns vs. Titans
+2026-10-23T21:00:38Z,5523020,0.575,0.575,NO,"UFC 333: Merab Dvalishvili vs. Petr Yan (Bantamweight, Main Card)"
+2026-10-23T22:00:22Z,4551293,0.625,0.625,NO,Packers vs. Lions
+2026-10-23T22:00:22Z,5522973,0.495,0.495,YES,"UFC 333: Alexander Volkanovski vs. Movsar Evloev (Featherweight, Main Card)"
+2026-10-23T22:00:22Z,5599705,0.535,0.535,NO,FC Barcelona vs. Real Madrid CF: O/U 4.5
+2026-10-23T22:00:23Z,5797986,0.615,0.615,YES,Grizzlies vs. Warriors
+2026-10-23T22:00:27Z,5797980,0.645,0.645,YES,Rockets vs. Spurs
+2026-10-23T22:00:27Z,4551294,0.385,0.385,YES,Rams vs. Raiders
+2026-10-23T22:00:28Z,5598475,0.595,0.595,NO,Will FC Barcelona win on 2026-10-25?
+2026-10-23T22:00:28Z,5911655,0.395,0.395,YES,Lakers vs. Jazz
+2026-10-23T22:00:28Z,5797983,0.505,0.505,NO,Pelicans vs. Jazz
+2026-10-23T22:00:28Z,5598478,0.155,0.155,NO,Will FC Barcelona vs. Real Madrid CF end in a draw?
+2026-10-23T22:00:29Z,5598481,0.245,0.245,YES,Will Real Madrid CF win on 2026-10-25?
+2026-10-24T00:00:44Z,5847746,0.475,0.475,NO,Heat vs. Hornets
+2026-10-24T00:00:51Z,5911661,0.705,0.705,YES,Magic vs. Knicks
+2026-10-24T00:00:52Z,5911664,0.575,0.575,NO,Raptors vs. Timberwolves
+2026-10-24T00:00:55Z,5911667,0.845,0.845,NO,Clippers vs. Thunder
+2026-10-24T00:00:58Z,5911658,0.325,0.325,YES,Pacers vs. Nets
+2026-10-24T02:00:36Z,5911670,0.575,0.575,YES,Pistons vs. 76ers
+2026-10-24T02:00:39Z,5686979,0.983,0.983,YES,US x Iran ceasefire continues through October 22?
+2026-10-24T03:00:23Z,601826,0.779,0.779,NO,Will Flávio Bolsonaro win the 2026 Brazilian presidential election?
+2026-10-24T03:00:26Z,5847758,0.475,0.475,YES,Wizards vs. Bulls
+2026-10-24T03:00:29Z,4551296,0.585,0.585,NO,Chiefs vs. Seahawks
+2026-10-24T03:00:30Z,5861664,0.65,0.65,NO,Warriors vs. Suns
+2026-10-24T03:00:30Z,5340070,0.345,0.345,NO,Will Flávio Bolsonaro win the second round of the 2026 Brazilian presidential election by 4–8%?
+2026-10-24T03:00:35Z,5847755,0.52,0.52,YES,Rockets vs. Hawks
+2026-10-24T03:00:36Z,601819,0.215,0.215,YES,Will Luiz Inácio Lula da Silva win the 2026 Brazilian presidential election?
+2026-10-24T03:00:36Z,5861655,0.815,0.815,NO,Pelicans vs. Nuggets
+2026-10-24T03:00:39Z,5916778,0.43,0.43,YES,Grizzlies vs. Kings
+2026-10-24T03:00:39Z,5624513,0.585,0.585,NO,Ole Miss vs. Texas
+2026-10-24T05:00:32Z,4824600,0.775,0.775,NO,Will Aleksandar Vučić – United Serbia win the most seats in the 2026 Serbian parliamentary election?
+2026-10-24T05:00:33Z,5340069,0.067,0.067,NO,Will Flávio Bolsonaro win the second round of the 2026 Brazilian presidential election by 8–12%?
+2026-10-24T05:00:35Z,4824602,0.22,0.22,YES,Will Student List – Students Win win the most seats in the 2026 Serbian parliamentary election?
+2026-10-24T05:00:36Z,5340071,0.395,0.395,NO,Will Flávio Bolsonaro win the second round of the 2026 Brazilian presidential election by less than 4%?
+2026-10-24T07:00:23Z,5533914,0.595,0.595,NO,Will Manchester City FC win on 2026-10-24?
+2026-10-24T10:00:19Z,5534122,0.675,0.675,YES,Will Arsenal FC win on 2026-10-24?
+2026-10-24T11:00:38Z,6102531,0.635,0.635,YES,LoL: Top Esports vs Anyone's Legend (BO1) - Worlds Group Stage
+2026-10-24T13:00:22Z,5534599,0.505,0.505,NO,Will Chelsea FC win on 2026-10-24?
+2026-10-24T13:00:24Z,6085321,0.465,0.465,NO,Dota 2: Team Liquid vs OG (BO3) - PARI Universe Group A
+2026-10-24T14:00:23Z,6102519,0.185,0.185,YES,LoL: G2 Esports vs LOS (BO1) - Worlds Group Stage
+2026-10-24T14:00:28Z,6102360,0.685,0.685,NO,LoL: CTBC Flying Oyster vs Movistar KOI (BO1) - Worlds Group Stage
+2026-10-24T15:00:23Z,5522973,0.495,0.495,YES,"UFC 333: Alexander Volkanovski vs. Movsar Evloev (Featherweight, Main Card)"
+2026-10-24T15:00:24Z,6102511,0.545,0.545,YES,LoL: LYON vs Karmine Corp (BO1) - Worlds Group Stage
+2026-10-24T15:00:27Z,4551269,0.395,0.395,YES,Steelers vs. Saints
+2026-10-24T15:00:37Z,5523020,0.595,0.595,NO,"UFC 333: Merab Dvalishvili vs. Petr Yan (Bantamweight, Main Card)"
+2026-10-24T15:00:41Z,6102525,0.315,0.315,YES,LoL: Invictus Gaming vs Team Secret Whales (BO1) - Worlds Group Stage
+2026-10-24T17:00:10Z,5594284,0.315,0.315,NO,Will Sunderland AFC win on 2026-10-25?
+2026-10-24T17:00:11Z,6102354,0.565,0.565,YES,LoL: Dplus KIA vs T1 (BO1) - Worlds Group Stage
+2026-10-24T17:00:13Z,5594290,0.385,0.385,NO,Will Leeds United FC win on 2026-10-25?
+2026-10-24T17:00:16Z,6102366,0.585,0.585,NO,LoL: Hanwha Life Esports vs Gen.G (BO1) - Worlds Group Stage
+2026-10-24T19:00:52Z,4551285,0.455,0.455,YES,Browns vs. Titans
+2026-10-24T19:00:52Z,5847746,0.435,0.435,NO,Heat vs. Hornets
+2026-10-24T19:00:54Z,4551275,0.585,0.585,YES,Buccaneers vs. Panthers
+2026-10-24T19:00:55Z,4551277,0.805,0.805,YES,Giants vs. Texans
+2026-10-24T19:00:55Z,6103679,0.505,0.505,NO,Spread: 76ers (-12.5)
+2026-10-24T19:00:55Z,4551272,0.425,0.425,NO,49ers vs. Falcons
+2026-10-24T19:00:56Z,4551273,0.465,0.465,YES,Bengals vs. Ravens
+2026-10-24T19:00:56Z,6102537,0.755,0.755,NO,LoL: Team Liquid vs Bilibili Gaming (BO1) - Worlds Group Stage
+2026-10-24T19:00:58Z,5624513,0.585,0.585,NO,Ole Miss vs. Texas
+2026-10-24T21:00:43Z,4551293,0.635,0.635,NO,Packers vs. Lions
+2026-10-24T21:00:43Z,5599705,0.535,0.535,NO,FC Barcelona vs. Real Madrid CF: O/U 4.5
+2026-10-24T21:00:46Z,5847758,0.525,0.525,YES,Wizards vs. Bulls
+2026-10-24T21:00:51Z,5861664,0.775,0.775,NO,Warriors vs. Suns
+2026-10-24T21:00:55Z,4551294,0.385,0.385,YES,Rams vs. Raiders
+2026-10-24T21:00:55Z,5598478,0.155,0.155,NO,Will FC Barcelona vs. Real Madrid CF end in a draw?
+2026-10-24T21:00:56Z,5598475,0.595,0.595,NO,Will FC Barcelona win on 2026-10-25?
+2026-10-24T21:00:56Z,5861655,0.805,0.805,NO,Pelicans vs. Nuggets
+2026-10-24T21:00:56Z,5847755,0.505,0.505,YES,Rockets vs. Hawks
+2026-10-24T21:00:57Z,5911655,0.3,0.3,YES,Lakers vs. Jazz
+2026-10-24T21:00:58Z,5598481,0.255,0.255,YES,Will Real Madrid CF win on 2026-10-25?
+2026-10-25T00:00:06Z,5911658,0.315,0.315,YES,Pacers vs. Nets
+2026-10-25T01:00:35Z,5951674,0.485,0.485,NO,Wizards vs. Hornets
+2026-10-25T01:00:38Z,5911661,0.745,0.745,YES,Magic vs. Knicks
+2026-10-25T01:00:39Z,5911664,0.585,0.585,NO,Raptors vs. Timberwolves
+2026-10-25T01:00:39Z,5911667,0.875,0.875,NO,Clippers vs. Thunder
+2026-10-25T02:00:15Z,5951683,0.71,0.71,YES,Mavericks vs. Heat
+2026-10-25T02:00:16Z,5642600,0.52,0.52,NO,Atlanta Dream vs. Golden State Valkyries
+2026-10-25T02:00:17Z,5911670,0.525,0.525,YES,Pistons vs. 76ers
+2026-10-25T02:00:17Z,5951686,0.48,0.48,NO,Pacers vs. Bucks
+2026-10-25T02:00:19Z,5951677,0.485,0.485,NO,Timberwolves vs. Cavaliers
+2026-10-25T02:00:19Z,5686979,0.997,0.997,YES,US x Iran ceasefire continues through October 22?
+2026-10-25T03:00:20Z,601826,0.785,0.785,NO,Will Flávio Bolsonaro win the 2026 Brazilian presidential election?
+2026-10-25T03:00:27Z,4551296,0.585,0.585,NO,Chiefs vs. Seahawks
+2026-10-25T03:00:27Z,5340070,0.365,0.365,NO,Will Flávio Bolsonaro win the second round of the 2026 Brazilian presidential election by 4–8%?
+2026-10-25T03:00:33Z,601819,0.215,0.215,YES,Will Luiz Inácio Lula da Silva win the 2026 Brazilian presidential election?
+2026-10-25T03:00:34Z,5916778,0.365,0.365,YES,Grizzlies vs. Kings
+2026-10-25T05:00:20Z,4824600,0.72,0.72,NO,Will Aleksandar Vučić – United Serbia win the most seats in the 2026 Serbian parliamentary election?
+2026-10-25T05:00:21Z,5340069,0.0475,0.0475,NO,Will Flávio Bolsonaro win the second round of the 2026 Brazilian presidential election by 8–12%?
+2026-10-25T05:00:23Z,4824602,0.28,0.28,YES,Will Student List – Students Win win the most seats in the 2026 Serbian parliamentary election?
+2026-10-25T05:00:25Z,5340071,0.395,0.395,NO,Will Flávio Bolsonaro win the second round of the 2026 Brazilian presidential election by less than 4%?
+2026-10-25T07:00:22Z,6085321,0.435,0.435,NO,Dota 2: Team Liquid vs OG (BO3) - PARI Universe Group A
+2026-10-25T10:00:20Z,4551269,0.405,0.405,YES,Steelers vs. Saints
+2026-10-25T12:00:27Z,5594284,0.325,0.325,NO,Will Sunderland AFC win on 2026-10-25?
+2026-10-25T12:00:33Z,6168128,0.275,0.275,NO,LoL: Hanwha Life Esports vs Invictus Gaming (BO1) - Worlds Group Stage
+2026-10-25T12:00:36Z,5594290,0.365,0.365,NO,Will Leeds United FC win on 2026-10-25?
+2026-10-25T13:00:31Z,4551285,0.455,0.455,YES,Browns vs. Titans
+2026-10-25T13:00:34Z,4551275,0.595,0.595,YES,Buccaneers vs. Panthers
+2026-10-25T13:00:35Z,6168122,0.525,0.525,YES,LoL: Top Esports vs G2 Esports (BO1) - Worlds Group Stage
+2026-10-25T13:00:35Z,4551277,0.805,0.805,YES,Giants vs. Texans
+2026-10-25T13:00:35Z,4551273,0.415,0.415,YES,Bengals vs. Ravens
+2026-10-25T13:00:35Z,4551272,0.425,0.425,NO,49ers vs. Falcons
+2026-10-25T15:00:21Z,5599705,0.555,0.555,NO,FC Barcelona vs. Real Madrid CF: O/U 4.5
+2026-10-25T15:00:22Z,4551293,0.635,0.635,NO,Packers vs. Lions
+2026-10-25T15:00:27Z,6168153,0.285,0.285,YES,LoL: Dplus KIA vs Movistar KOI - Game 1 Winner
+2026-10-25T15:00:28Z,6168154,0.285,0.285,YES,LoL: Dplus KIA vs Movistar KOI - Game 2 Winner
+2026-10-25T15:00:32Z,6168136,0.095,0.095,YES,LoL: Gen.G vs LYON (BO3) - Worlds Group Stage
+2026-10-25T15:00:34Z,4551294,0.385,0.385,YES,Rams vs. Raiders
+2026-10-25T15:00:34Z,5598478,0.155,0.155,NO,Will FC Barcelona vs. Real Madrid CF end in a draw?
+2026-10-25T15:00:35Z,5598475,0.615,0.615,NO,Will FC Barcelona win on 2026-10-25?
+2026-10-25T15:00:36Z,5911655,0.315,0.315,YES,Lakers vs. Jazz
+2026-10-25T15:00:37Z,5598481,0.235,0.235,YES,Will Real Madrid CF win on 2026-10-25?
+2026-10-25T15:00:39Z,6168134,0.165,0.165,NO,LoL: Gen.G vs LYON - Game 1 Winner
+2026-10-25T15:00:39Z,6168155,0.215,0.215,YES,LoL: Dplus KIA vs Movistar KOI (BO3) - Worlds Group Stage
+2026-10-25T18:00:09Z,6149427,0.495,0.495,YES,Spread: Pacers (-6.5)
+2026-10-25T18:00:16Z,5911658,0.315,0.315,YES,Pacers vs. Nets
+2026-10-25T18:00:20Z,6168180,0.115,0.115,YES,LoL: T1 vs CTBC Flying Oyster (BO1) - Worlds Group Stage
+2026-10-25T19:00:20Z,6149584,0.495,0.495,NO,Spread: Thunder (-16.5)
+2026-10-25T19:00:23Z,5911664,0.495,0.495,NO,Raptors vs. Timberwolves
+2026-10-25T19:00:23Z,6168174,0.705,0.705,NO,LoL: Karmine Corp vs Bilibili Gaming (BO1) - Worlds Group Stage
+2026-10-25T19:00:23Z,5911661,0.715,0.715,YES,Magic vs. Knicks
+2026-10-25T19:00:24Z,5911667,0.905,0.905,NO,Clippers vs. Thunder
+2026-10-25T20:00:38Z,5911670,0.485,0.485,YES,Pistons vs. 76ers
+2026-10-25T20:00:41Z,5686979,0.998,0.998,YES,US x Iran ceasefire continues through October 22?
+2026-10-25T21:00:20Z,601826,0.6635,0.6635,NO,Will Flávio Bolsonaro win the 2026 Brazilian presidential election?
+2026-10-25T21:00:22Z,6168187,0.605,0.605,YES,LoL: LOS vs Team Secret Whales - Game 2 Winner
+2026-10-25T21:00:23Z,6168186,0.595,0.595,YES,LoL: LOS vs Team Secret Whales - Game 1 Winner
+2026-10-25T21:00:27Z,4551296,0.585,0.585,NO,Chiefs vs. Seahawks
+2026-10-25T21:00:27Z,5340070,0.115,0.115,NO,Will Flávio Bolsonaro win the second round of the 2026 Brazilian presidential election by 4–8%?
+2026-10-25T21:00:35Z,601819,0.345,0.345,YES,Will Luiz Inácio Lula da Silva win the 2026 Brazilian presidential election?
+2026-10-25T21:00:38Z,5916778,0.405,0.405,YES,Grizzlies vs. Kings
+2026-10-25T23:00:51Z,4824600,0.004,0.004,NO,Will Aleksandar Vučić – United Serbia win the most seats in the 2026 Serbian parliamentary election?
+2026-10-25T23:00:51Z,5951674,0.585,0.585,NO,Wizards vs. Hornets
+2026-10-25T23:00:52Z,5340069,0.0055,0.0055,NO,Will Flávio Bolsonaro win the second round of the 2026 Brazilian presidential election by 8–12%?
+2026-10-25T23:00:54Z,4824602,0.9915,0.9915,YES,Will Student List – Students Win win the most seats in the 2026 Serbian parliamentary election?
+2026-10-25T23:00:56Z,5340071,0.185,0.185,NO,Will Flávio Bolsonaro win the second round of the 2026 Brazilian presidential election by less than 4%?
+2026-10-26T02:00:19Z,5951683,0.745,0.745,YES,Mavericks vs. Heat
+2026-10-26T02:00:20Z,5642600,0.525,0.525,NO,Atlanta Dream vs. Golden State Valkyries
+2026-10-26T02:00:21Z,5951686,0.4,0.4,NO,Pacers vs. Bucks
+2026-10-26T02:00:22Z,5951677,0.575,0.575,NO,Timberwolves vs. Cavaliers
+2026-10-26T11:00:24Z,6216000,0.365,0.365,YES,Counter-Strike: Spirit vs FURIA (BO3) - PGL Masters Bucharest Group Stage
+2026-10-26T12:00:39Z,6168180,0.115,0.115,YES,LoL: T1 vs CTBC Flying Oyster (BO1) - Worlds Group Stage
+2026-10-26T13:00:21Z,6168174,0.705,0.705,NO,LoL: Karmine Corp vs Bilibili Gaming (BO1) - Worlds Group Stage
+2026-10-26T15:00:23Z,6168187,0.605,0.605,YES,LoL: LOS vs Team Secret Whales - Game 2 Winner
+2026-10-26T15:00:24Z,6168186,0.605,0.605,YES,LoL: LOS vs Team Secret Whales - Game 1 Winner
+2026-10-26T19:00:20Z,5951674,0.575,0.575,NO,Wizards vs. Hornets
+2026-10-26T20:00:21Z,5951683,0.705,0.705,YES,Mavericks vs. Heat
+2026-10-26T20:00:22Z,6235345,0.505,0.505,YES,Spread: Thunder (-8.5)
+2026-10-26T20:00:23Z,5642600,0.505,0.505,NO,Atlanta Dream vs. Golden State Valkyries
+2026-10-26T20:00:24Z,5951686,0.395,0.395,NO,Pacers vs. Bucks
+2026-10-26T20:00:25Z,5951677,0.595,0.595,NO,Timberwolves vs. Cavaliers

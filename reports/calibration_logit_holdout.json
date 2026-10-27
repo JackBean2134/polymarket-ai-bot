@@ -1,0 +1,89 @@
+{
+  "samples": 335,
+  "brier_score": 0.23261220556866546,
+  "log_loss": 0.6264308499341245,
+  "base_rate": 0.3761194029850746,
+  "mean_prediction": 0.4104893846613542,
+  "buckets": [
+    {
+      "lower": 0,
+      "upper": 0.1,
+      "count": 75,
+      "avg_predicted": 0.005044603327596649,
+      "observed_rate": 0.013333333333333334,
+      "gap": 0.008288730005736685
+    },
+    {
+      "lower": 0.1,
+      "upper": 0.2,
+      "count": 13,
+      "avg_predicted": 0.15700128876383582,
+      "observed_rate": 0.3076923076923077,
+      "gap": 0.1506910189284719
+    },
+    {
+      "lower": 0.2,
+      "upper": 0.3,
+      "count": 25,
+      "avg_predicted": 0.24675065494334067,
+      "observed_rate": 0.76,
+      "gap": 0.5132493450566593
+    },
+    {
+      "lower": 0.3,
+      "upper": 0.4,
+      "count": 33,
+      "avg_predicted": 0.35489991500973606,
+      "observed_rate": 0.48484848484848486,
+      "gap": 0.1299485698387488
+    },
+    {
+      "lower": 0.4,
+      "upper": 0.5,
+      "count": 40,
+      "avg_predicted": 0.4536672449177567,
+      "observed_rate": 0.625,
+      "gap": 0.17133275508224333
+    },
+    {
+      "lower": 0.5,
+      "upper": 0.6,
+      "count": 70,
+      "avg_predicted": 0.5580757232825578,
+      "observed_rate": 0.3142857142857143,
+      "gap": -0.24379000899684355
+    },
+    {
+      "lower": 0.6,
+      "upper": 0.7,
+      "count": 32,
+      "avg_predicted": 0.6329764931528353,
+      "observed_rate": 0.40625,
+      "gap": -0.22672649315283533
+    },
+    {
+      "lower": 0.7,
+      "upper": 0.8,
+      "count": 18,
+      "avg_predicted": 0.739771262028706,
+      "observed_rate": 0.3888888888888889,
+      "gap": -0.3508823731398171
+    },
+    {
+      "lower": 0.8,
+      "upper": 0.9,
+      "count": 13,
+      "avg_predicted": 0.83739170564119,
+      "observed_rate": 0.3076923076923077,
+      "gap": -0.5296993979488823
+    },
+    {
+      "lower": 0.9,
+      "upper": 1,
+      "count": 16,
+      "avg_predicted": 0.9715565744948131,
+      "observed_rate": 0.9375,
+      "gap": -0.03405657449481314
+    }
+  ]
+}

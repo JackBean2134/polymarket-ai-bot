@@ -1,0 +1,89 @@
+{
+  "samples": 335,
+  "brier_score": 0.23292439701492534,
+  "log_loss": 0.6269110395943357,
+  "base_rate": 0.3761194029850746,
+  "mean_prediction": 0.4111313432835822,
+  "buckets": [
+    {
+      "lower": 0,
+      "upper": 0.1,
+      "count": 74,
+      "avg_predicted": 0.004486486486486487,
+      "observed_rate": 0.013513513513513514,
+      "gap": 0.009027027027027026
+    },
+    {
+      "lower": 0.1,
+      "upper": 0.2,
+      "count": 13,
+      "avg_predicted": 0.15730769230769234,
+      "observed_rate": 0.23076923076923078,
+      "gap": 0.07346153846153844
+    },
+    {
+      "lower": 0.2,
+      "upper": 0.3,
+      "count": 24,
+      "avg_predicted": 0.24437500000000004,
+      "observed_rate": 0.7916666666666666,
+      "gap": 0.5472916666666666
+    },
+    {
+      "lower": 0.3,
+      "upper": 0.4,
+      "count": 38,
+      "avg_predicted": 0.3527631578947368,
+      "observed_rate": 0.5,
+      "gap": 0.14723684210526322
+    },
+    {
+      "lower": 0.4,
+      "upper": 0.5,
+      "count": 35,
+      "avg_predicted": 0.4574285714285713,
+      "observed_rate": 0.6285714285714286,
+      "gap": 0.17114285714285726
+    },
+    {
+      "lower": 0.5,
+      "upper": 0.6,
+      "count": 72,
+      "avg_predicted": 0.5567361111111111,
+      "observed_rate": 0.3194444444444444,
+      "gap": -0.23729166666666668
+    },
+    {
+      "lower": 0.6,
+      "upper": 0.7,
+      "count": 31,
+      "avg_predicted": 0.6326935483870968,
+      "observed_rate": 0.3870967741935484,
+      "gap": -0.24559677419354842
+    },
+    {
+      "lower": 0.7,
+      "upper": 0.8,
+      "count": 21,
+      "avg_predicted": 0.7416904761904762,
+      "observed_rate": 0.38095238095238093,
+      "gap": -0.3607380952380953
+    },
+    {
+      "lower": 0.8,
+      "upper": 0.9,
+      "count": 11,
+      "avg_predicted": 0.843181818181818,
+      "observed_rate": 0.36363636363636365,
+      "gap": -0.4795454545454544
+    },
+    {
+      "lower": 0.9,
+      "upper": 1,
+      "count": 16,
+      "avg_predicted": 0.9701875000000001,
+      "observed_rate": 0.9375,
+      "gap": -0.03268750000000009
+    }
+  ]
+}

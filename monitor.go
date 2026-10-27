@@ -5,59 +5,63 @@ import (
 	"fmt"
 	"io"
 	"log"
+	"math"
 	"os"
 	"runtime"
+	"sort"
 	"sync"
 	"time"
 )
 
 type Monitor struct {
-	config      *LoggingConfig
-	logger      *log.Logger
-	fileLogger  *log.Logger
-	mu          sync.RWMutex
-	metrics     *Metrics
-	alerts      []Alert
-	alertChan   chan Alert
-	eventChan   chan MonitorEvent
-	stopChan    chan struct{}
-	wg          sync.WaitGroup
+	config         *LoggingConfig
+	logger         *log.Logger
+	fileLogger     *log.Logger
+	mu             sync.RWMutex
+	metrics        *Metrics
+	alerts         []Alert
+	alertChan      chan Alert
+	eventChan      chan MonitorEvent
+	stopChan       chan struct{}
+	stopOnce       sync.Once
+	wg             sync.WaitGroup
+	latencySamples []float64
 }
 
 type Metrics struct {
-	StartTime       time.Time            `json:"start_time"`
-	TotalRequests   int64                `json:"total_requests"`
-	FailedRequests  int64                `json:"failed_requests"`
-	TotalTrades     int64                `json:"total_trades"`
-	ProfitableTrades int64               `json:"profitable_trades"`
-	TotalPnL        float64              `json:"total_pnl"`
-	DailyPnL        float64              `json:"daily_pnl"`
-	WinRate         float64              `json:"win_rate"`
-	SharpeRatio     float64              `json:"sharpe_ratio"`
-	MaxDrawdown     float64              `json:"max_drawdown"`
-	CurrentDrawdown float64              `json:"current_drawdown"`
-	OpenPositions   int                  `json:"open_positions"`
-	APIErrors       map[string]int64     `json:"api_errors"`
-	LatencyStats    *LatencyStats        `json:"latency_stats"`
-	LastUpdated     time.Time            `json:"last_updated"`
+	StartTime        time.Time        `json:"start_time"`
+	TotalRequests    int64            `json:"total_requests"`
+	FailedRequests   int64            `json:"failed_requests"`
+	TotalTrades      int64            `json:"total_trades"`
+	ProfitableTrades int64            `json:"profitable_trades"`
+	TotalPnL         float64          `json:"total_pnl"`
+	DailyPnL         float64          `json:"daily_pnl"`
+	WinRate          float64          `json:"win_rate"`
+	SharpeRatio      float64          `json:"sharpe_ratio"`
+	MaxDrawdown      float64          `json:"max_drawdown"`
+	CurrentDrawdown  float64          `json:"current_drawdown"`
+	OpenPositions    int              `json:"open_positions"`
+	APIErrors        map[string]int64 `json:"api_errors"`
+	LatencyStats     *LatencyStats    `json:"latency_stats"`
+	LastUpdated      time.Time        `json:"last_updated"`
 }
 
 type LatencyStats struct {
-	Average   float64 `json:"average"`
-	Min       float64 `json:"min"`
-	Max       float64 `json:"max"`
-	P50       float64 `json:"p50"`
-	P95       float64 `json:"p95"`
-	P99       float64 `json:"p99"`
+	Average float64 `json:"average"`
+	Min     float64 `json:"min"`
+	Max     float64 `json:"max"`
+	P50     float64 `json:"p50"`
+	P95     float64 `json:"p95"`
+	P99     float64 `json:"p99"`
 }
 
 type Alert struct {
-	ID        string    `json:"id"`
-	Type      string    `json:"type"`
-	Severity  string    `json:"severity"`
-	Message   string    `json:"message"`
-	Timestamp time.Time `json:"timestamp"`
-	Resolved  bool      `json:"resolved"`
+	ID        string                 `json:"id"`
+	Type      string                 `json:"type"`
+	Severity  string                 `json:"severity"`
+	Message   string                 `json:"message"`
+	Timestamp time.Time              `json:"timestamp"`
+	Resolved  bool                   `json:"resolved"`
 	Metadata  map[string]interface{} `json:"metadata,omitempty"`
 }
 
@@ -68,11 +72,11 @@ type MonitorEvent struct {
 }
 
 type LogEntry struct {
-	Timestamp time.Time            `json:"timestamp"`
-	Level     string               `json:"level"`
-	Message   string               `json:"message"`
-	Module    string               `json:"module,omitempty"`
-	Error     string               `json:"error,omitempty"`
+	Timestamp time.Time              `json:"timestamp"`
+	Level     string                 `json:"level"`
+	Message   string                 `json:"message"`
+	Module    string                 `json:"module,omitempty"`
+	Error     string                 `json:"error,omitempty"`
 	Metadata  map[string]interface{} `json:"metadata,omitempty"`
 }
 
@@ -107,7 +111,9 @@ func (m *Monitor) Start() {
 }
 
 func (m *Monitor) Stop() {
-	close(m.stopChan)
+	m.stopOnce.Do(func() {
+		close(m.stopChan)
+	})
 	m.wg.Wait()
 }
 
@@ -140,6 +146,10 @@ func (m *Monitor) processEvents() {
 func (m *Monitor) handleAlert(alert Alert) {
 	m.mu.Lock()
 	m.alerts = append(m.alerts, alert)
+	const maxAlerts = 1000
+	if len(m.alerts) > maxAlerts {
+		m.alerts = append([]Alert(nil), m.alerts[len(m.alerts)-maxAlerts:]...)
+	}
 	m.mu.Unlock()
 
 	if alert.Severity == "HIGH" || alert.Severity == "CRITICAL" {
@@ -175,6 +185,9 @@ func (m *Monitor) Error(message string, module string, err error, metadata ...ma
 }
 
 func (m *Monitor) log(level, message, module string, err error, metadata ...map[string]interface{}) {
+	if !m.shouldLog(level) {
+		return
+	}
 	entry := LogEntry{
 		Timestamp: time.Now(),
 		Level:     level,
@@ -201,6 +214,24 @@ func (m *Monitor) log(level, message, module string, err error, metadata ...map[
 	}
 }
 
+func (m *Monitor) shouldLog(level string) bool {
+	severity := map[string]int{"DEBUG": 0, "INFO": 1, "WARN": 2, "ERROR": 3, "ALERT": 3}
+	configured := 1
+	switch m.config.Level {
+	case "debug":
+		configured = 0
+	case "warn", "warning":
+		configured = 2
+	case "error":
+		configured = 3
+	}
+	value, ok := severity[level]
+	if !ok {
+		return true
+	}
+	return value >= configured
+}
+
 func (m *Monitor) RecordRequest(endpoint string, latency time.Duration, success bool) {
 	m.mu.Lock()
 	defer m.mu.Unlock()
@@ -218,31 +249,52 @@ func (m *Monitor) RecordRequest(endpoint string, latency time.Duration, success 
 	}
 
 	latencyMs := float64(latency.Nanoseconds()) / 1e6
-	m.updateLatencyStats(latencyMs)
+	m.latencySamples = append(m.latencySamples, latencyMs)
+	const maxLatencySamples = 2048
+	if len(m.latencySamples) > maxLatencySamples {
+		m.latencySamples = append([]float64(nil), m.latencySamples[len(m.latencySamples)-maxLatencySamples:]...)
+	}
+	m.updateLatencyStats()
 
 	m.metrics.LastUpdated = time.Now()
 }
 
-func (m *Monitor) updateLatencyStats(latency float64) {
+func (m *Monitor) updateLatencyStats() {
+	if m.metrics.LatencyStats == nil {
+		m.metrics.LatencyStats = &LatencyStats{}
+	}
 	stats := m.metrics.LatencyStats
-
-	if stats.Min == 0 || latency < stats.Min {
-		stats.Min = latency
-	}
-	if latency > stats.Max {
-		stats.Max = latency
+	if len(m.latencySamples) == 0 {
+		return
 	}
 
-	count := m.metrics.TotalRequests
-	if count == 0 {
-		count = 1
+	sorted := append([]float64(nil), m.latencySamples...)
+	sort.Float64s(sorted)
+
+	sum := 0.0
+	for _, sample := range sorted {
+		sum += sample
 	}
+	stats.Average = sum / float64(len(sorted))
+	stats.Min = sorted[0]
+	stats.Max = sorted[len(sorted)-1]
+	stats.P50 = percentile(sorted, 0.50)
+	stats.P95 = percentile(sorted, 0.95)
+	stats.P99 = percentile(sorted, 0.99)
+}
 
-	stats.Average = (stats.Average*float64(count-1) + latency) / float64(count)
-
-	stats.P50 = stats.Average * 0.8
-	stats.P95 = stats.Average * 1.5
-	stats.P99 = stats.Average * 2.0
+func percentile(sorted []float64, p float64) float64 {
+	if len(sorted) == 0 {
+		return 0
+	}
+	index := int(math.Ceil(p*float64(len(sorted)))) - 1
+	if index < 0 {
+		index = 0
+	}
+	if index >= len(sorted) {
+		index = len(sorted) - 1
+	}
+	return sorted[index]
 }
 
 func (m *Monitor) RecordTrade(trade *TradeExecution, pnl float64) {
@@ -309,6 +361,14 @@ func (m *Monitor) GetMetrics() *Metrics {
 
 	metrics := *m.metrics
 	metrics.LastUpdated = time.Now()
+	if m.metrics.LatencyStats != nil {
+		latencyCopy := *m.metrics.LatencyStats
+		metrics.LatencyStats = &latencyCopy
+	}
+	metrics.APIErrors = make(map[string]int64, len(m.metrics.APIErrors))
+	for key, value := range m.metrics.APIErrors {
+		metrics.APIErrors[key] = value
+	}
 
 	return &metrics
 }
@@ -345,23 +405,25 @@ func (m *Monitor) ResolveAlert(alertID string) {
 }
 
 func (m *Monitor) UpdateRiskMetrics(riskMetrics *RiskMetrics) {
+	if riskMetrics == nil {
+		return
+	}
+
 	m.mu.Lock()
-	defer m.mu.Unlock()
+	m.metrics.CurrentDrawdown = riskMetrics.CurrentDrawdown
+	if riskMetrics.CurrentDrawdown > m.metrics.MaxDrawdown {
+		m.metrics.MaxDrawdown = riskMetrics.CurrentDrawdown
+	}
+	exceedsThreshold := riskMetrics.CurrentDrawdown > 0.1
+	m.mu.Unlock()
 
-	if riskMetrics != nil {
-		m.metrics.CurrentDrawdown = riskMetrics.CurrentDrawdown
-		if riskMetrics.CurrentDrawdown > m.metrics.MaxDrawdown {
-			m.metrics.MaxDrawdown = riskMetrics.CurrentDrawdown
-		}
-
-		if riskMetrics.CurrentDrawdown > 0.1 {
-			m.SendAlert("HIGH_DRAWDOWN", "HIGH",
-				fmt.Sprintf("Current drawdown %.2f%% exceeds threshold", riskMetrics.CurrentDrawdown*100),
-				map[string]interface{}{
-					"drawdown": riskMetrics.CurrentDrawdown,
-					"threshold": 0.1,
-				})
-		}
+	if exceedsThreshold {
+		m.SendAlert("HIGH_DRAWDOWN", "HIGH",
+			fmt.Sprintf("Current drawdown %.2f%% exceeds threshold", riskMetrics.CurrentDrawdown*100),
+			map[string]interface{}{
+				"drawdown":  riskMetrics.CurrentDrawdown,
+				"threshold": 0.1,
+			})
 	}
 }
 
@@ -400,27 +462,27 @@ func (m *Monitor) GetSystemInfo() map[string]interface{} {
 
 func (m *Monitor) LogStartup(config *Config) {
 	m.Info("Polymarket AI Trading Bot starting", "main", map[string]interface{}{
-		"version":         "1.0.0",
-		"environment":     config.Polymarket.Environment,
-		"trading_mode":    config.Trading.Mode,
-		"ai_provider":     config.AI.Provider,
-		"ai_model":        config.AI.Model,
-		"total_capital":   config.Risk.TotalCapital,
-		"strategies":      config.Trading.AllowedStrategies,
-		"scan_interval":   config.Trading.ScanInterval,
+		"version":       "1.0.0",
+		"environment":   config.Polymarket.Environment,
+		"trading_mode":  config.Trading.Mode,
+		"ai_provider":   config.AI.Provider,
+		"ai_model":      config.AI.Model,
+		"total_capital": config.Risk.TotalCapital,
+		"strategies":    config.Trading.AllowedStrategies,
+		"scan_interval": config.Trading.ScanInterval,
 	})
 }
 
 func (m *Monitor) LogShutdown() {
 	metrics := m.GetMetrics()
 	m.Info("Polymarket AI Trading Bot shutting down", "main", map[string]interface{}{
-		"uptime":            m.GetUptime().String(),
-		"total_requests":    metrics.TotalRequests,
-		"failed_requests":   metrics.FailedRequests,
-		"total_trades":      metrics.TotalTrades,
-		"total_pnl":         metrics.TotalPnL,
-		"win_rate":          metrics.WinRate,
-		"sharpe_ratio":      metrics.SharpeRatio,
-		"max_drawdown":      metrics.MaxDrawdown,
+		"uptime":          m.GetUptime().String(),
+		"total_requests":  metrics.TotalRequests,
+		"failed_requests": metrics.FailedRequests,
+		"total_trades":    metrics.TotalTrades,
+		"total_pnl":       metrics.TotalPnL,
+		"win_rate":        metrics.WinRate,
+		"sharpe_ratio":    metrics.SharpeRatio,
+		"max_drawdown":    metrics.MaxDrawdown,
 	})
 }

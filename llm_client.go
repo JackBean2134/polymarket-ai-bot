@@ -12,10 +12,12 @@ import (
 )
 
 type LLMClient struct {
-	apiKey     string
-	baseURL    string
-	model      string
-	httpClient *http.Client
+	apiKey      string
+	baseURL     string
+	model       string
+	temperature float64
+	maxTokens   int
+	httpClient  *http.Client
 }
 
 type LLMRequest struct {
@@ -46,39 +48,85 @@ type Usage struct {
 	TotalTokens      int `json:"total_tokens"`
 }
 
-func NewLLMClient(apiKey, baseURL, model string) *LLMClient {
-	if baseURL == "" {
-		baseURL = "https://api.deepseek.com/v1"
+// DefaultBaseURL returns an OpenAI-compatible endpoint for known providers.
+func DefaultBaseURL(provider string) string {
+	switch strings.ToLower(strings.TrimSpace(provider)) {
+	case "deepseek":
+		return "https://api.deepseek.com"
+	case "qwen", "dashscope", "alibaba":
+		return "https://dashscope.aliyuncs.com/compatible-mode/v1"
+	case "openai":
+		return "https://api.openai.com/v1"
+	default:
+		return "https://api.deepseek.com"
 	}
+}
+
+func NewLLMClient(apiKey, baseURL, model string) *LLMClient {
+	return NewLLMClientWithConfig(AIConfig{
+		APIKey:  apiKey,
+		BaseURL: baseURL,
+		Model:   model,
+	})
+}
+
+func NewLLMClientWithConfig(config AIConfig) *LLMClient {
+	baseURL := strings.TrimSpace(config.BaseURL)
+	if baseURL == "" {
+		baseURL = DefaultBaseURL(config.Provider)
+	}
+	model := strings.TrimSpace(config.Model)
 	if model == "" {
-		model = "deepseek-chat"
+		if strings.EqualFold(config.Provider, "qwen") {
+			model = "qwen-plus"
+		} else {
+			model = "deepseek-chat"
+		}
+	}
+	temperature := config.Temperature
+	if temperature <= 0 {
+		temperature = 0.3
+	}
+	maxTokens := config.MaxTokens
+	if maxTokens <= 0 {
+		maxTokens = 2000
+	}
+	timeout := time.Duration(config.Timeout) * time.Second
+	if timeout <= 0 {
+		timeout = 30 * time.Second
 	}
 
 	return &LLMClient{
-		apiKey:  apiKey,
-		baseURL: strings.TrimSuffix(baseURL, "/"),
-		model:   model,
+		apiKey:      config.APIKey,
+		baseURL:     strings.TrimSuffix(baseURL, "/"),
+		model:       model,
+		temperature: temperature,
+		maxTokens:   maxTokens,
 		httpClient: &http.Client{
-			Timeout: 30 * time.Second,
+			Timeout: timeout,
 		},
 	}
 }
 
 func (c *LLMClient) Chat(ctx context.Context, prompt string) (string, error) {
+	if strings.TrimSpace(c.apiKey) == "" {
+		return "", fmt.Errorf("LLM API key is not configured")
+	}
+
 	request := &LLMRequest{
 		Model: c.model,
 		Messages: []Message{
 			{
 				Role:    "system",
-				Content: "你是一位专业的预测市场分析专家。请基于提供的数据进行概率评估和预测。输出 JSON 格式。",
+				Content: "You are a careful forecasting analyst for prediction markets. Output only a single JSON object. Probabilities must be P(YES) in [0,1], not percentages.",
 			},
 			{
 				Role:    "user",
 				Content: prompt,
 			},
 		},
-		Temperature: 0.3,
-		MaxTokens:   2000,
+		Temperature: c.temperature,
+		MaxTokens:   c.maxTokens,
 	}
 
 	requestBody, err := json.Marshal(request)
@@ -86,37 +134,62 @@ func (c *LLMClient) Chat(ctx context.Context, prompt string) (string, error) {
 		return "", fmt.Errorf("failed to marshal request: %w", err)
 	}
 
-	req, err := http.NewRequestWithContext(ctx, "POST", c.baseURL+"/chat/completions", bytes.NewBuffer(requestBody))
+	var lastErr error
+	for attempt := 0; attempt < 3; attempt++ {
+		if attempt > 0 {
+			select {
+			case <-ctx.Done():
+				return "", ctx.Err()
+			case <-time.After(time.Duration(attempt) * 500 * time.Millisecond):
+			}
+		}
+
+		content, retry, err := c.doChat(ctx, requestBody)
+		if err == nil {
+			return content, nil
+		}
+		lastErr = err
+		if !retry {
+			break
+		}
+	}
+
+	return "", lastErr
+}
+
+func (c *LLMClient) doChat(ctx context.Context, requestBody []byte) (string, bool, error) {
+	req, err := http.NewRequestWithContext(ctx, http.MethodPost, c.baseURL+"/chat/completions", bytes.NewReader(requestBody))
 	if err != nil {
-		return "", fmt.Errorf("failed to create request: %w", err)
+		return "", false, fmt.Errorf("failed to create request: %w", err)
 	}
 
 	req.Header.Set("Content-Type", "application/json")
 	req.Header.Set("Authorization", "Bearer "+c.apiKey)
+	req.Header.Set("User-Agent", userAgent)
 
 	resp, err := c.httpClient.Do(req)
 	if err != nil {
-		return "", fmt.Errorf("failed to send request: %w", err)
+		return "", true, fmt.Errorf("failed to send request: %w", err)
 	}
 	defer resp.Body.Close()
 
-	body, err := io.ReadAll(resp.Body)
+	body, err := io.ReadAll(io.LimitReader(resp.Body, 1<<20))
 	if err != nil {
-		return "", fmt.Errorf("failed to read response: %w", err)
+		return "", true, fmt.Errorf("failed to read response: %w", err)
 	}
 
 	if resp.StatusCode != http.StatusOK {
-		return "", fmt.Errorf("API error: status=%d, body=%s", resp.StatusCode, string(body))
+		retry := resp.StatusCode == http.StatusTooManyRequests || resp.StatusCode >= 500
+		return "", retry, fmt.Errorf("LLM API error: status=%d, body=%s", resp.StatusCode, string(body))
 	}
 
 	var llmResp LLMResponse
 	if err := json.Unmarshal(body, &llmResp); err != nil {
-		return "", fmt.Errorf("failed to unmarshal response: %w", err)
+		return "", false, fmt.Errorf("failed to unmarshal response: %w", err)
 	}
-
 	if len(llmResp.Choices) == 0 {
-		return "", fmt.Errorf("no choices in response")
+		return "", false, fmt.Errorf("no choices in response")
 	}
 
-	return llmResp.Choices[0].Message.Content, nil
+	return llmResp.Choices[0].Message.Content, false, nil
 }

@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"os"
 	"strconv"
+	"strings"
 	"time"
 )
 
@@ -17,40 +18,49 @@ type Config struct {
 }
 
 type PolymarketConfig struct {
-	APIKey       string `json:"api_key"`
-	APISecret    string `json:"api_secret"`
-	Passphrase   string `json:"passphrase"`
-	Timeout      int    `json:"timeout"`
-	RetryCount   int    `json:"retry_count"`
-	RetryWait    int    `json:"retry_wait"`
-	Environment  string `json:"environment"`
+	APIKey        string `json:"api_key"`
+	APISecret     string `json:"api_secret"`
+	Passphrase    string `json:"passphrase"`
+	WalletAddress string `json:"wallet_address"`
+	PrivateKey    string `json:"-"`
+	FunderAddress string `json:"funder_address"`
+	SignatureType int    `json:"signature_type"`
+	ChainID       int64  `json:"chain_id"`
+	Timeout       int    `json:"timeout"`
+	RetryCount    int    `json:"retry_count"`
+	RetryWait     int    `json:"retry_wait"`
+	Environment   string `json:"environment"`
 }
 
 type AIConfig struct {
-	Provider       string  `json:"provider"`
-	Model          string  `json:"model"`
-	APIKey         string  `json:"api_key"`
-	BaseURL        string  `json:"base_url"`
-	Temperature    float64 `json:"temperature"`
-	MaxTokens      int     `json:"max_tokens"`
-	Timeout        int     `json:"timeout"`
-	CacheEnabled   bool    `json:"cache_enabled"`
-	CacheTTL       int     `json:"cache_ttl"`
+	Provider     string  `json:"provider"`
+	Model        string  `json:"model"`
+	APIKey       string  `json:"api_key"`
+	BaseURL      string  `json:"base_url"`
+	Temperature  float64 `json:"temperature"`
+	MaxTokens    int     `json:"max_tokens"`
+	Timeout      int     `json:"timeout"`
+	CacheEnabled bool    `json:"cache_enabled"`
+	CacheTTL     int     `json:"cache_ttl"`
 }
 
 type TradingConfig struct {
-	Enabled              bool     `json:"enabled"`
-	Mode                 string   `json:"mode"`
-	AllowedStrategies    []string `json:"allowed_strategies"`
-	AllowedMarkets       []string `json:"allowed_markets"`
-	BlockedMarkets       []string `json:"blocked_markets"`
-	MinLiquidity         float64  `json:"min_liquidity"`
-	MinVolume24h         float64  `json:"min_volume_24h"`
-	MaxSlippage          float64  `json:"max_slippage"`
-	AutoCompound         bool     `json:"auto_compound"`
-	RebalanceThreshold   float64  `json:"rebalance_threshold"`
-	ScanInterval         int      `json:"scan_interval"`
-	MaxOpenPositions     int      `json:"max_open_positions"`
+	Enabled            bool     `json:"enabled"`
+	Mode               string   `json:"mode"`
+	AllowLive          bool     `json:"allow_live"`
+	AllowedStrategies  []string `json:"allowed_strategies"`
+	AllowedMarkets     []string `json:"allowed_markets"`
+	AllowedTokens      []string `json:"allowed_tokens"`
+	BlockedMarkets     []string `json:"blocked_markets"`
+	StopFile           string   `json:"stop_file"`
+	HeartbeatFile      string   `json:"heartbeat_file"`
+	MinLiquidity       float64  `json:"min_liquidity"`
+	MinVolume24h       float64  `json:"min_volume_24h"`
+	MaxSlippage        float64  `json:"max_slippage"`
+	AutoCompound       bool     `json:"auto_compound"`
+	RebalanceThreshold float64  `json:"rebalance_threshold"`
+	ScanInterval       int      `json:"scan_interval"`
+	MaxOpenPositions   int      `json:"max_open_positions"`
 }
 
 type LoggingConfig struct {
@@ -69,22 +79,25 @@ func LoadConfig() (*Config, error) {
 		configPath = "polymarket_config.json"
 	}
 
-	config := &Config{}
+	return LoadConfigFrom(configPath)
+}
 
-	if _, err := os.Stat(configPath); err == nil {
-		data, err := os.ReadFile(configPath)
-		if err != nil {
-			return nil, fmt.Errorf("failed to read config file: %w", err)
-		}
+func LoadConfigFrom(configPath string) (*Config, error) {
+	data, err := os.ReadFile(configPath)
+	if err != nil {
+		return nil, fmt.Errorf("failed to read config file %q: %w", configPath, err)
+	}
 
-		if err := json.Unmarshal(data, config); err != nil {
-			return nil, fmt.Errorf("failed to parse config file: %w", err)
-		}
+	config := DefaultConfig()
+	if err := json.Unmarshal(data, config); err != nil {
+		return nil, fmt.Errorf("failed to parse config file %q: %w", configPath, err)
 	}
 
 	config.loadFromEnv()
 
-	config.validate()
+	if err := config.validate(); err != nil {
+		return nil, err
+	}
 
 	return config, nil
 }
@@ -98,6 +111,40 @@ func (c *Config) loadFromEnv() {
 	}
 	if passphrase := os.Getenv("POLYMARKET_PASSPHRASE"); passphrase != "" {
 		c.Polymarket.Passphrase = passphrase
+	}
+	if walletAddress := os.Getenv("POLYMARKET_WALLET_ADDRESS"); walletAddress != "" {
+		c.Polymarket.WalletAddress = walletAddress
+	}
+	if privateKey := os.Getenv("POLYMARKET_PRIVATE_KEY"); privateKey != "" {
+		c.Polymarket.PrivateKey = privateKey
+	}
+	if funder := os.Getenv("POLYMARKET_FUNDER_ADDRESS"); funder != "" {
+		c.Polymarket.FunderAddress = funder
+	}
+	if signatureType := os.Getenv("POLYMARKET_SIGNATURE_TYPE"); signatureType != "" {
+		if val, err := strconv.Atoi(signatureType); err == nil {
+			c.Polymarket.SignatureType = val
+		}
+	}
+	if chainID := os.Getenv("POLYMARKET_CHAIN_ID"); chainID != "" {
+		if val, err := strconv.ParseInt(chainID, 10, 64); err == nil {
+			c.Polymarket.ChainID = val
+		}
+	}
+	if tokens := os.Getenv("POLYMARKET_ALLOWED_TOKENS"); tokens != "" {
+		parts := strings.Split(tokens, ",")
+		c.Trading.AllowedTokens = c.Trading.AllowedTokens[:0]
+		for _, part := range parts {
+			if token := strings.TrimSpace(part); token != "" {
+				c.Trading.AllowedTokens = append(c.Trading.AllowedTokens, token)
+			}
+		}
+	}
+	if stopFile := os.Getenv("POLYMARKET_STOP_FILE"); stopFile != "" {
+		c.Trading.StopFile = stopFile
+	}
+	if heartbeatFile := os.Getenv("POLYMARKET_HEARTBEAT_FILE"); heartbeatFile != "" {
+		c.Trading.HeartbeatFile = heartbeatFile
 	}
 
 	if timeout := os.Getenv("POLYMARKET_TIMEOUT"); timeout != "" {
@@ -184,7 +231,10 @@ func (c *Config) validate() error {
 	}
 
 	if c.Trading.Mode == "" {
-		c.Trading.Mode = "live"
+		c.Trading.Mode = "paper"
+	}
+	if c.Trading.Mode != "paper" && c.Trading.Mode != "live" {
+		return fmt.Errorf("invalid trading mode %q: expected paper or live", c.Trading.Mode)
 	}
 	if len(c.Trading.AllowedStrategies) == 0 {
 		c.Trading.AllowedStrategies = []string{"VALUE_BET", "ARBITRAGE", "MOMENTUM"}
@@ -226,6 +276,70 @@ func (c *Config) validate() error {
 	if c.Risk.MinConfidence == 0 {
 		c.Risk.MinConfidence = 50.0
 	}
+	if c.Risk.DailyTradeLimit == 0 {
+		c.Risk.DailyTradeLimit = 20
+	}
+	if c.Risk.MaxTradeCount == 0 {
+		c.Risk.MaxTradeCount = 100
+	}
+	if c.Risk.MaxOpenPositions == 0 {
+		c.Risk.MaxOpenPositions = 10
+	}
+	if c.Risk.MaxLiquiditySlippage == 0 {
+		c.Risk.MaxLiquiditySlippage = 0.05
+	}
+	if c.Risk.DiversificationLimit == 0 {
+		c.Risk.DiversificationLimit = 0.2
+	}
+	if c.AI.Temperature < 0 || c.AI.Temperature > 2 {
+		return fmt.Errorf("ai.temperature must be in [0, 2]")
+	}
+	if c.AI.MaxTokens < 0 {
+		return fmt.Errorf("ai.max_tokens must not be negative")
+	}
+	if c.Polymarket.RetryCount < 0 {
+		return fmt.Errorf("polymarket.retry_count must not be negative")
+	}
+	if c.Polymarket.SignatureType < SignatureTypeEOA || c.Polymarket.SignatureType > SignatureTypePolyGnosisSafe {
+		return fmt.Errorf("polymarket.signature_type must be 0, 1 or 2")
+	}
+	if c.Polymarket.ChainID == 0 {
+		c.Polymarket.ChainID = ChainPolygon
+	}
+	if _, ok := contractsByChain[c.Polymarket.ChainID]; !ok {
+		return fmt.Errorf("polymarket.chain_id must be 137 or 80002")
+	}
+	for _, strategy := range c.Trading.AllowedStrategies {
+		switch strategy {
+		case "VALUE_BET", "ARBITRAGE", "MOMENTUM", "HEDGE":
+		default:
+			return fmt.Errorf("trading.allowed_strategies contains unknown strategy %q", strategy)
+		}
+	}
+	if c.Risk.TotalCapital <= 0 {
+		return fmt.Errorf("risk.total_capital must be positive")
+	}
+	if c.Risk.MaxPositionSize <= 0 {
+		return fmt.Errorf("risk.max_position_size must be positive")
+	}
+	if c.Risk.MaxPositionPercent <= 0 || c.Risk.MaxPositionPercent > 1 {
+		return fmt.Errorf("risk.max_position_percent must be in (0, 1]")
+	}
+	if c.Risk.MaxDrawdown <= 0 || c.Risk.MaxDrawdown > 1 {
+		return fmt.Errorf("risk.max_drawdown must be in (0, 1]")
+	}
+	if c.Risk.KellyMultiplier < 0 || c.Risk.KellyMultiplier > 1 {
+		return fmt.Errorf("risk.kelly_multiplier must be in [0, 1]")
+	}
+	if c.Trading.ScanInterval <= 0 {
+		return fmt.Errorf("trading.scan_interval must be positive")
+	}
+	if c.Trading.StopFile == "" {
+		c.Trading.StopFile = "STOP"
+	}
+	if c.Trading.HeartbeatFile == "" {
+		c.Trading.HeartbeatFile = "heartbeat.txt"
+	}
 
 	if c.Logging.Level == "" {
 		c.Logging.Level = "info"
@@ -246,7 +360,7 @@ func (c *Config) SaveToFile(path string) error {
 		return fmt.Errorf("failed to marshal config: %w", err)
 	}
 
-	if err := os.WriteFile(path, data, 0644); err != nil {
+	if err := os.WriteFile(path, data, 0600); err != nil {
 		return fmt.Errorf("failed to write config file: %w", err)
 	}
 
@@ -256,10 +370,12 @@ func (c *Config) SaveToFile(path string) error {
 func DefaultConfig() *Config {
 	return &Config{
 		Polymarket: PolymarketConfig{
-			Timeout:     30,
-			RetryCount:  3,
-			RetryWait:   1,
-			Environment: "production",
+			Timeout:       30,
+			RetryCount:    3,
+			RetryWait:     1,
+			Environment:   "production",
+			SignatureType: SignatureTypeEOA,
+			ChainID:       ChainPolygon,
 		},
 		Risk: RiskConfig{
 			TotalCapital:         10000,
@@ -269,6 +385,7 @@ func DefaultConfig() *Config {
 			MaxDrawdown:          0.15,
 			MaxTradeCount:        100,
 			DailyTradeLimit:      20,
+			MaxOpenPositions:     10,
 			KellyMultiplier:      0.25,
 			MinConfidence:        50.0,
 			MaxLiquiditySlippage: 0.05,
@@ -284,15 +401,18 @@ func DefaultConfig() *Config {
 			CacheTTL:     1800,
 		},
 		Trading: TradingConfig{
-			Enabled:            false,
-			Mode:               "paper",
-			MinLiquidity:       5000,
-			MinVolume24h:       10000,
-			MaxSlippage:        0.05,
-			AutoCompound:       false,
-			ScanInterval:       60,
-			MaxOpenPositions:   10,
-			AllowedStrategies:  []string{"VALUE_BET", "ARBITRAGE", "MOMENTUM"},
+			Enabled:           false,
+			Mode:              "paper",
+			AllowLive:         false,
+			StopFile:          "STOP",
+			HeartbeatFile:     "heartbeat.txt",
+			MinLiquidity:      5000,
+			MinVolume24h:      10000,
+			MaxSlippage:       0.05,
+			AutoCompound:      false,
+			ScanInterval:      60,
+			MaxOpenPositions:  10,
+			AllowedStrategies: []string{"VALUE_BET", "ARBITRAGE", "MOMENTUM"},
 		},
 		Logging: LoggingConfig{
 			Level:      "info",
@@ -303,6 +423,15 @@ func DefaultConfig() *Config {
 			MaxAge:     30,
 		},
 	}
+}
+
+// DefaultConfigFromEnv builds the safe defaults and then applies environment
+// overrides. It is used by read-only/dry-run commands when no config file
+// exists, so credentials can still come from POLYMARKET_* variables.
+func DefaultConfigFromEnv() *Config {
+	config := DefaultConfig()
+	config.loadFromEnv()
+	return config
 }
 
 func (c *Config) GetTimeout() time.Duration {
@@ -319,6 +448,29 @@ func (c *Config) GetRetryWait() time.Duration {
 
 func (c *Config) IsPaperTrading() bool {
 	return c.Trading.Mode == "paper" || !c.Trading.Enabled
+}
+
+// LiveOrderAllowed implements the article's pre-authorized envelope plus the
+// triple switch: live mode, config allow_live, and POLYMARKET_ALLOW_LIVE=1.
+// A non-empty token whitelist is mandatory, and the STOP file must be absent.
+func (c *Config) LiveOrderAllowed(token string) error {
+	if c.Trading.Mode != "live" || !c.Trading.Enabled {
+		return fmt.Errorf("live order requires trading.mode=live and trading.enabled=true")
+	}
+	if !c.Trading.AllowLive {
+		return fmt.Errorf("live order requires trading.allow_live=true")
+	}
+	envAllow := strings.ToLower(strings.TrimSpace(os.Getenv("POLYMARKET_ALLOW_LIVE")))
+	if envAllow != "1" && envAllow != "true" {
+		return fmt.Errorf("live order requires POLYMARKET_ALLOW_LIVE=1")
+	}
+	if len(c.Trading.AllowedTokens) == 0 {
+		return fmt.Errorf("live order requires a non-empty trading.allowed_tokens whitelist")
+	}
+	if !containsToken(c.Trading.AllowedTokens, token) {
+		return fmt.Errorf("token %s is not in trading.allowed_tokens", token)
+	}
+	return CheckStopFile(c.Trading.StopFile)
 }
 
 func (c *Config) IsStrategyAllowed(strategy string) bool {

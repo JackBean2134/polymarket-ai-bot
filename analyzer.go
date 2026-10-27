@@ -2,6 +2,7 @@ package polymarket
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"math"
 	"sort"
@@ -18,23 +19,23 @@ type MarketAnalyzer struct {
 }
 
 type MarketCache struct {
-	mu        sync.RWMutex
-	prices    map[string]*MarketPrice
+	mu         sync.RWMutex
+	prices     map[string]*MarketPrice
 	orderbooks map[string]*OrderBook
 	lastUpdate map[string]time.Time
-	ttl       time.Duration
+	ttl        time.Duration
 }
 
 type MarketOpportunity struct {
-	MarketID      string  `json:"market_id"`
-	MarketTitle   string  `json:"market_title"`
-	Strategy      string  `json:"strategy"`
-	ExpectedValue float64 `json:"expected_value"`
-	Confidence    float64 `json:"confidence"`
-	RecommendedBet string `json:"recommended_bet"`
-	BetSize       float64 `json:"bet_size"`
-	Reasoning     string  `json:"reasoning"`
-	RiskLevel     string  `json:"risk_level"`
+	MarketID       string  `json:"market_id"`
+	MarketTitle    string  `json:"market_title"`
+	Strategy       string  `json:"strategy"`
+	ExpectedValue  float64 `json:"expected_value"`
+	Confidence     float64 `json:"confidence"`
+	RecommendedBet string  `json:"recommended_bet"`
+	BetSize        float64 `json:"bet_size"`
+	Reasoning      string  `json:"reasoning"`
+	RiskLevel      string  `json:"risk_level"`
 }
 
 type LiquidityAnalysis struct {
@@ -50,33 +51,33 @@ type LiquidityAnalysis struct {
 }
 
 type VolumeAnalysis struct {
-	MarketID      string    `json:"market_id"`
-	Volume24h     float64   `json:"volume_24h"`
-	Volume7d      float64   `json:"volume_7d"`
-	Volume30d     float64   `json:"volume_30d"`
-	VolumeTrend   string    `json:"volume_trend"`
-	VolumeGrowth  float64   `json:"volume_growth"`
-	ActivityLevel string    `json:"activity_level"`
+	MarketID      string  `json:"market_id"`
+	Volume24h     float64 `json:"volume_24h"`
+	Volume7d      float64 `json:"volume_7d"`
+	Volume30d     float64 `json:"volume_30d"`
+	VolumeTrend   string  `json:"volume_trend"`
+	VolumeGrowth  float64 `json:"volume_growth"`
+	ActivityLevel string  `json:"activity_level"`
 }
 
 type OrderBookImbalance struct {
-	MarketID      string  `json:"market_id"`
-	BidVolume     float64 `json:"bid_volume"`
-	AskVolume     float64 `json:"ask_volume"`
-	Imbalance     float64 `json:"imbalance"`
+	MarketID         string  `json:"market_id"`
+	BidVolume        float64 `json:"bid_volume"`
+	AskVolume        float64 `json:"ask_volume"`
+	Imbalance        float64 `json:"imbalance"`
 	ImbalancePercent float64 `json:"imbalance_percent"`
-	Pressure      string  `json:"pressure"`
-	Signal        string  `json:"signal"`
+	Pressure         string  `json:"pressure"`
+	Signal           string  `json:"signal"`
 }
 
 type PricePattern struct {
-	MarketID    string    `json:"market_id"`
-	Pattern     string    `json:"pattern"`
-	Strength    float64   `json:"strength"`
-	Direction   string    `json:"direction"`
-	TargetPrice float64   `json:"target_price"`
-	Confidence  float64   `json:"confidence"`
-	Timeframe   string    `json:"timeframe"`
+	MarketID    string  `json:"market_id"`
+	Pattern     string  `json:"pattern"`
+	Strength    float64 `json:"strength"`
+	Direction   string  `json:"direction"`
+	TargetPrice float64 `json:"target_price"`
+	Confidence  float64 `json:"confidence"`
+	Timeframe   string  `json:"timeframe"`
 }
 
 func NewMarketAnalyzer(client *Client) *MarketAnalyzer {
@@ -99,28 +100,40 @@ func (ma *MarketAnalyzer) AnalyzeMarket(ctx context.Context, marketID string) (*
 	if err != nil {
 		return nil, fmt.Errorf("failed to get market: %w", err)
 	}
+	if market == nil {
+		return nil, fmt.Errorf("market %s returned no data", marketID)
+	}
 
-	orderBook, err := ma.clob.GetOrderBook(ctx, marketID)
+	yesTokenID, _, err := market.BinaryTokenIDs()
+	if err != nil {
+		return nil, err
+	}
+
+	orderBook, err := ma.clob.GetOrderBook(ctx, yesTokenID)
 	if err != nil {
 		return nil, fmt.Errorf("failed to get orderbook: %w", err)
 	}
 
-	price, err := ma.clob.GetMarketPrice(ctx, marketID)
+	price, err := ma.clob.GetMarketPrice(ctx, yesTokenID)
 	if err != nil {
 		return nil, fmt.Errorf("failed to get price: %w", err)
 	}
+	if price == nil {
+		return nil, fmt.Errorf("market %s returned no price data", marketID)
+	}
 
 	liquidity := ma.AnalyzeLiquidity(orderBook)
-	volume, err := ma.AnalyzeVolume(ctx, marketID)
-	if err != nil {
-		volume = &VolumeAnalysis{MarketID: marketID}
-	}
+	volume := ma.AnalyzeVolumeFromMarket(market, marketID)
 
 	imbalance := ma.AnalyzeOrderBookImbalance(orderBook)
 
+	title := market.Title
+	if title == "" {
+		title = market.Question
+	}
 	opportunity := &MarketOpportunity{
 		MarketID:    marketID,
-		MarketTitle: market.Title,
+		MarketTitle: title,
 	}
 
 	if liquidity.LiquidityScore < 30 {
@@ -129,7 +142,7 @@ func (ma *MarketAnalyzer) AnalyzeMarket(ctx context.Context, marketID string) (*
 		return opportunity, nil
 	}
 
-	impliedProb := price.YesPrice / 100.0
+	impliedProb := clampProbability(price.YesPrice)
 	fairValue := ma.CalculateFairValue(market, price, volume, imbalance)
 
 	if math.Abs(fairValue-impliedProb) > 0.1 {
@@ -146,20 +159,8 @@ func (ma *MarketAnalyzer) AnalyzeMarket(ctx context.Context, marketID string) (*
 		}
 		opportunity.Confidence = math.Abs(fairValue-impliedProb) * 100
 	} else {
-		opportunity.Strategy = "ARBITRAGE"
-		if imbalance.ImbalancePercent > 20 {
-			if imbalance.Imbalance > 0 {
-				opportunity.RecommendedBet = "YES"
-				opportunity.Reasoning = "Strong buying pressure"
-			} else {
-				opportunity.RecommendedBet = "NO"
-				opportunity.Reasoning = "Strong selling pressure"
-			}
-			opportunity.Confidence = imbalance.ImbalancePercent
-		} else {
-			opportunity.Strategy = "HOLD"
-			opportunity.Reasoning = "No clear edge detected"
-		}
+		opportunity.Strategy = "HOLD"
+		opportunity.Reasoning = "No probability edge detected; order book imbalance alone is not arbitrage"
 	}
 
 	if opportunity.Confidence > 70 {
@@ -227,25 +228,13 @@ func (ma *MarketAnalyzer) estimateSlippage(totalLiq, tradeSize float64) float64 
 	return (tradeSize / totalLiq) * 100 * 2
 }
 
-func (ma *MarketAnalyzer) AnalyzeVolume(ctx context.Context, marketID string) (*VolumeAnalysis, error) {
-	market, err := ma.gamma.GetMarketByID(ctx, marketID)
-	if err != nil {
-		return nil, err
-	}
-
-	vol24h := market.Volume
-	vol7d := vol24h * 7
-	vol30d := vol24h * 30
-
-	trend := "STABLE"
-	growth := 0.0
-
-	if vol24h > vol7d/7*1.2 {
-		trend = "INCREASING"
-		growth = (vol24h - vol7d/7) / (vol7d / 7) * 100
-	} else if vol24h < vol7d/7*0.8 {
-		trend = "DECREASING"
-		growth = (vol24h - vol7d/7) / (vol7d / 7) * 100
+func (ma *MarketAnalyzer) AnalyzeVolumeFromMarket(market *Market, marketID string) *VolumeAnalysis {
+	vol24h := 0.0
+	if market != nil {
+		vol24h = market.Volume24h
+		if vol24h <= 0 {
+			vol24h = market.Volume
+		}
 	}
 
 	activity := "LOW"
@@ -260,16 +249,24 @@ func (ma *MarketAnalyzer) AnalyzeVolume(ctx context.Context, marketID string) (*
 	return &VolumeAnalysis{
 		MarketID:      marketID,
 		Volume24h:     vol24h,
-		Volume7d:      vol7d,
-		Volume30d:     vol30d,
-		VolumeTrend:   trend,
-		VolumeGrowth:  growth,
+		VolumeTrend:   "UNKNOWN",
 		ActivityLevel: activity,
-	}, nil
+	}
+}
+
+func (ma *MarketAnalyzer) AnalyzeVolume(ctx context.Context, marketID string) (*VolumeAnalysis, error) {
+	market, err := ma.gamma.GetMarketByID(ctx, marketID)
+	if err != nil {
+		return nil, err
+	}
+	return ma.AnalyzeVolumeFromMarket(market, marketID), nil
 }
 
 func (ma *MarketAnalyzer) AnalyzeOrderBookImbalance(ob *OrderBook) *OrderBookImbalance {
-	if ob == nil || (len(ob.Bids) == 0 && len(ob.Asks) == 0) {
+	if ob == nil {
+		return &OrderBookImbalance{}
+	}
+	if len(ob.Bids) == 0 && len(ob.Asks) == 0 {
 		return &OrderBookImbalance{MarketID: ob.MarketID}
 	}
 
@@ -311,35 +308,19 @@ func (ma *MarketAnalyzer) AnalyzeOrderBookImbalance(ob *OrderBook) *OrderBookImb
 	}
 }
 
+// CalculateFairValue deliberately does NOT invent an edge from price, volume
+// or order-book imbalance. Those heuristics are not calibrated forecasts and
+// previously could manufacture a 0.5 "edge" from book imbalance alone. Use
+// AIPredictor + a validated calibration layer to supply a real probability;
+// otherwise the fair value is simply the market-implied probability.
 func (ma *MarketAnalyzer) CalculateFairValue(market *Market, price *MarketPrice, volume *VolumeAnalysis, imbalance *OrderBookImbalance) float64 {
-	baseProb := price.YesPrice / 100.0
-
-	volumeAdjust := 0.0
-	if volume != nil {
-		if volume.VolumeTrend == "INCREASING" {
-			volumeAdjust = 0.05
-		} else if volume.VolumeTrend == "DECREASING" {
-			volumeAdjust = -0.05
-		}
+	_ = market
+	_ = volume
+	_ = imbalance
+	if price == nil {
+		return 0.5
 	}
-
-	imbalanceAdjust := 0.0
-	if imbalance != nil {
-		imbalanceAdjust = imbalance.ImbalancePercent / 200.0
-	}
-
-	liquidityAdjust := 0.0
-	if market != nil {
-		if market.Liquidity < 5000 {
-			liquidityAdjust = -0.03
-		} else if market.Liquidity > 50000 {
-			liquidityAdjust = 0.02
-		}
-	}
-
-	fairValue := baseProb + volumeAdjust + imbalanceAdjust + liquidityAdjust
-
-	return math.Max(0.01, math.Min(0.99, fairValue))
+	return clampProbability(price.YesPrice)
 }
 
 func (ma *MarketAnalyzer) CalculateBetSize(expectedValue float64, confidence float64, liquidity *LiquidityAnalysis) float64 {
@@ -391,9 +372,18 @@ func (ma *MarketAnalyzer) ScanMarkets(ctx context.Context, marketIDs []string) (
 	wg.Wait()
 	close(errChan)
 
+	var scanErrors []error
+	for err := range errChan {
+		scanErrors = append(scanErrors, err)
+	}
+
 	sort.Slice(opportunities, func(i, j int) bool {
 		return opportunities[i].ExpectedValue > opportunities[j].ExpectedValue
 	})
+
+	if len(opportunities) == 0 && len(scanErrors) > 0 {
+		return nil, errors.Join(scanErrors...)
+	}
 
 	return opportunities, nil
 }
@@ -403,6 +393,7 @@ func (ma *MarketAnalyzer) DetectPricePatterns(ctx context.Context, marketID stri
 		MarketID: marketID,
 		Interval: interval,
 		Limit:    limit,
+		Fidelity: 60,
 	}
 
 	history, err := ma.clob.GetPriceHistory(ctx, params)
@@ -463,7 +454,7 @@ func (ma *MarketAnalyzer) identifyPattern(prices []float64) (string, float64, st
 
 func (ma *MarketAnalyzer) calculateTrend(prices []float64) float64 {
 	n := len(prices)
-	if n < 2 {
+	if n < 2 || prices[0] <= 0 {
 		return 0
 	}
 	return (prices[n-1] - prices[0]) / prices[0]
@@ -487,5 +478,8 @@ func (ma *MarketAnalyzer) calculateVolatility(prices []float64) float64 {
 	}
 	variance /= float64(len(prices))
 
+	if mean == 0 {
+		return 0
+	}
 	return math.Sqrt(variance) / mean
 }

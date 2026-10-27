@@ -2,9 +2,20 @@ package polymarket
 
 import (
 	"context"
+	"encoding/json"
+	"errors"
 	"fmt"
+	"sort"
+	"strconv"
+	"strings"
 	"time"
 )
+
+// ErrLiveOrderingDisabled is returned by the legacy CLOBService.CreateOrder
+// method. Real orders are built and signed by OrderSigner and submitted by
+// LiveExecutor; keep this guard so no caller can accidentally POST an
+// unsigned body to /order.
+var ErrLiveOrderingDisabled = errors.New("legacy CreateOrder is disabled: use OrderSigner + LiveExecutor for signed orders")
 
 type CLOBService struct {
 	client *Client
@@ -16,58 +27,198 @@ func NewCLOBService(client *Client) *CLOBService {
 
 type OrderBook struct {
 	MarketID    string    `json:"market_id"`
+	TokenID     string    `json:"token_id"`
+	ConditionID string    `json:"condition_id"`
 	Bids        []Order   `json:"bids"`
 	Asks        []Order   `json:"asks"`
-	LastUpdated time.Time `json:"last_updated"`
+	Timestamp   time.Time `json:"timestamp"`
+	Hash        string    `json:"hash"`
+}
+
+type rawOrderBook struct {
+	Market    string          `json:"market"`
+	AssetID   string          `json:"asset_id"`
+	Timestamp json.RawMessage `json:"timestamp"`
+	Hash      string          `json:"hash"`
+	Bids      []Order         `json:"bids"`
+	Asks      []Order         `json:"asks"`
+}
+
+func (ob *OrderBook) UnmarshalJSON(data []byte) error {
+	var raw rawOrderBook
+	if err := json.Unmarshal(data, &raw); err != nil {
+		return err
+	}
+
+	timestamp := time.Time{}
+	if value, err := parseUnixTime(raw.Timestamp); err == nil && value > 0 {
+		if value > 1_000_000_000_000 {
+			timestamp = time.UnixMilli(value).UTC()
+		} else {
+			timestamp = time.Unix(value, 0).UTC()
+		}
+	}
+
+	sort.SliceStable(raw.Bids, func(i, j int) bool { return raw.Bids[i].Price > raw.Bids[j].Price })
+	sort.SliceStable(raw.Asks, func(i, j int) bool { return raw.Asks[i].Price < raw.Asks[j].Price })
+
+	*ob = OrderBook{
+		MarketID:    raw.AssetID,
+		TokenID:     raw.AssetID,
+		ConditionID: raw.Market,
+		Bids:        raw.Bids,
+		Asks:        raw.Asks,
+		Timestamp:   timestamp,
+		Hash:        raw.Hash,
+	}
+	return nil
 }
 
 type Order struct {
-	OrderID   string  `json:"order_id"`
-	Price     float64 `json:"price"`
-	Size      float64 `json:"size"`
-	Side      string  `json:"side"`
-	Outcome   string  `json:"outcome"`
-	Timestamp time.Time `json:"timestamp"`
+	OrderID   string    `json:"order_id,omitempty"`
+	Price     float64   `json:"price"`
+	Size      float64   `json:"size"`
+	Side      string    `json:"side,omitempty"`
+	Outcome   string    `json:"outcome,omitempty"`
+	Timestamp time.Time `json:"timestamp,omitempty"`
+}
+
+type rawOrder struct {
+	OrderID string          `json:"order_id"`
+	Price   json.RawMessage `json:"price"`
+	Size    json.RawMessage `json:"size"`
+	Side    string          `json:"side"`
+	Outcome string          `json:"outcome"`
+}
+
+func (o *Order) UnmarshalJSON(data []byte) error {
+	var raw rawOrder
+	if err := json.Unmarshal(data, &raw); err != nil {
+		return err
+	}
+	price, err := parseFlexibleFloat(raw.Price)
+	if err != nil {
+		return err
+	}
+	size, err := parseFlexibleFloat(raw.Size)
+	if err != nil {
+		return err
+	}
+	*o = Order{
+		OrderID: raw.OrderID,
+		Price:   price,
+		Size:    size,
+		Side:    raw.Side,
+		Outcome: raw.Outcome,
+	}
+	return nil
+}
+
+func (o Order) MarshalJSON() ([]byte, error) {
+	return json.Marshal(map[string]string{
+		"order_id": o.OrderID,
+		"price":    formatFloat(o.Price),
+		"size":     formatFloat(o.Size),
+		"side":     o.Side,
+		"outcome":  o.Outcome,
+	})
 }
 
 type MarketPrice struct {
 	MarketID  string  `json:"market_id"`
+	TokenID   string  `json:"token_id"`
+	Side      string  `json:"side"`
 	YesPrice  float64 `json:"yes_price"`
 	NoPrice   float64 `json:"no_price"`
 	LastPrice float64 `json:"last_price"`
+	BidPrice  float64 `json:"bid_price"`
+	AskPrice  float64 `json:"ask_price"`
 	Volume24h float64 `json:"volume_24h"`
 	Change24h float64 `json:"change_24h"`
 }
 
-type MidpointPrice struct {
-	MarketID   string  `json:"market_id"`
-	Midpoint   float64 `json:"midpoint"`
-	BidPrice   float64 `json:"bid_price"`
-	AskPrice   float64 `json:"ask_price"`
-	Spread     float64 `json:"spread"`
-	LastUpdated time.Time `json:"last_updated"`
+func (s *CLOBService) GetOrderBook(ctx context.Context, tokenID string) (*OrderBook, error) {
+	if strings.TrimSpace(tokenID) == "" {
+		return nil, fmt.Errorf("token ID is required")
+	}
+	params := map[string]string{"token_id": tokenID}
+	var orderBook OrderBook
+	if err := s.client.get(ctx, s.client.clobClient, "/book", params, &orderBook); err != nil {
+		return nil, err
+	}
+	return &orderBook, nil
 }
 
-type Spread struct {
-	MarketID   string  `json:"market_id"`
-	BidPrice   float64 `json:"bid_price"`
-	AskPrice   float64 `json:"ask_price"`
-	Spread     float64 `json:"spread"`
-	SpreadPercent float64 `json:"spread_percent"`
+func (s *CLOBService) GetTokenPrice(ctx context.Context, tokenID, side string) (float64, error) {
+	side = strings.ToUpper(strings.TrimSpace(side))
+	if side != "BUY" && side != "SELL" {
+		return 0, fmt.Errorf("side must be BUY or SELL")
+	}
+	params := map[string]string{
+		"token_id": tokenID,
+		"side":     side,
+	}
+	var response struct {
+		Price Decimal `json:"price"`
+	}
+	if err := s.client.get(ctx, s.client.clobClient, "/price", params, &response); err != nil {
+		return 0, err
+	}
+	return clampProbability(response.Price.Float64()), nil
 }
 
-type TradePrice struct {
-	MarketID  string    `json:"market_id"`
-	Price     float64   `json:"price"`
-	Side      string    `json:"side"`
-	Size      float64   `json:"size"`
-	Timestamp time.Time `json:"timestamp"`
+func (s *CLOBService) GetMidpointPrice(ctx context.Context, tokenID string) (*MarketPrice, error) {
+	params := map[string]string{"token_id": tokenID}
+	var response struct {
+		Mid Decimal `json:"mid"`
+	}
+	if err := s.client.get(ctx, s.client.clobClient, "/midpoint", params, &response); err != nil {
+		return nil, err
+	}
+	mid := clampProbability(response.Mid.Float64())
+	return &MarketPrice{
+		MarketID:  tokenID,
+		TokenID:   tokenID,
+		YesPrice:  mid,
+		NoPrice:   clampProbability(1 - mid),
+		LastPrice: mid,
+	}, nil
+}
+
+// GetMarketPrice treats tokenID as the YES token of a binary market and
+// returns decimal prices in [0, 1]. It uses the midpoint when available and
+// falls back to the best executable ask.
+func (s *CLOBService) GetMarketPrice(ctx context.Context, tokenID string) (*MarketPrice, error) {
+	if price, err := s.GetMidpointPrice(ctx, tokenID); err == nil && validPrice(price.YesPrice) {
+		if book, bookErr := s.GetOrderBook(ctx, tokenID); bookErr == nil {
+			if len(book.Bids) > 0 {
+				price.BidPrice = book.Bids[0].Price
+			}
+			if len(book.Asks) > 0 {
+				price.AskPrice = book.Asks[0].Price
+			}
+		}
+		return price, nil
+	}
+
+	ask, err := s.GetTokenPrice(ctx, tokenID, "BUY")
+	if err != nil {
+		return nil, err
+	}
+	return &MarketPrice{
+		MarketID:  tokenID,
+		TokenID:   tokenID,
+		YesPrice:  ask,
+		NoPrice:   clampProbability(1 - ask),
+		LastPrice: ask,
+		AskPrice:  ask,
+	}, nil
 }
 
 type PriceHistory struct {
-	MarketID  string                 `json:"market_id"`
-	Prices    []PriceHistoryPoint    `json:"prices"`
-	Interval  string                 `json:"interval"`
+	MarketID string              `json:"market_id"`
+	Prices   []PriceHistoryPoint `json:"prices"`
+	Interval string              `json:"interval"`
 }
 
 type PriceHistoryPoint struct {
@@ -76,18 +227,101 @@ type PriceHistoryPoint struct {
 	Volume    float64   `json:"volume"`
 }
 
-type FeeRate struct {
-	MarketID    string  `json:"market_id"`
-	MakerFee    float64 `json:"maker_fee"`
-	TakerFee    float64 `json:"taker_fee"`
-	VolumeTier  string  `json:"volume_tier"`
+type GetPriceHistoryParams struct {
+	MarketID  string
+	Interval  string
+	Fidelity  int
+	StartTime int64
+	EndTime   int64
+	Limit     int
+}
+
+func (s *CLOBService) GetPriceHistory(ctx context.Context, params *GetPriceHistoryParams) (*PriceHistory, error) {
+	if params == nil || params.MarketID == "" {
+		return nil, fmt.Errorf("market/token ID is required")
+	}
+
+	queryParams := map[string]string{"market": params.MarketID}
+	if params.Interval != "" {
+		queryParams["interval"] = params.Interval
+	}
+	if params.Fidelity > 0 {
+		queryParams["fidelity"] = strconv.Itoa(params.Fidelity)
+	}
+	if params.StartTime > 0 {
+		queryParams["startTs"] = strconv.FormatInt(params.StartTime, 10)
+	}
+	if params.EndTime > 0 {
+		queryParams["endTs"] = strconv.FormatInt(params.EndTime, 10)
+	}
+
+	var response struct {
+		History []struct {
+			T int64   `json:"t"`
+			P Decimal `json:"p"`
+		} `json:"history"`
+	}
+	if err := s.client.get(ctx, s.client.clobClient, "/prices-history", queryParams, &response); err != nil {
+		return nil, err
+	}
+
+	history := &PriceHistory{
+		MarketID: params.MarketID,
+		Interval: params.Interval,
+		Prices:   make([]PriceHistoryPoint, 0, len(response.History)),
+	}
+	for _, point := range response.History {
+		history.Prices = append(history.Prices, PriceHistoryPoint{
+			Timestamp: time.Unix(point.T, 0).UTC(),
+			Price:     clampProbability(point.P.Float64()),
+		})
+	}
+	if params.Limit > 0 && len(history.Prices) > params.Limit {
+		history.Prices = history.Prices[len(history.Prices)-params.Limit:]
+	}
+	return history, nil
 }
 
 type TickSize struct {
-	MarketID  string  `json:"market_id"`
-	TickSize  float64 `json:"tick_size"`
-	MinSize   float64 `json:"min_size"`
-	MaxSize   float64 `json:"max_size"`
+	TokenID  string  `json:"token_id"`
+	TickSize float64 `json:"tick_size"`
+}
+
+func (s *CLOBService) GetTickSize(ctx context.Context, tokenID string) (*TickSize, error) {
+	params := map[string]string{"token_id": tokenID}
+	var response struct {
+		MinimumTickSize Decimal `json:"minimum_tick_size"`
+	}
+	if err := s.client.get(ctx, s.client.clobClient, "/tick-size", params, &response); err != nil {
+		return nil, err
+	}
+	return &TickSize{TokenID: tokenID, TickSize: response.MinimumTickSize.Float64()}, nil
+}
+
+func (s *CLOBService) GetNegRisk(ctx context.Context, tokenID string) (bool, error) {
+	params := map[string]string{"token_id": tokenID}
+	var response struct {
+		NegRisk bool `json:"neg_risk"`
+	}
+	if err := s.client.get(ctx, s.client.clobClient, "/neg-risk", params, &response); err != nil {
+		return false, err
+	}
+	return response.NegRisk, nil
+}
+
+func (s *CLOBService) GetFeeRateBps(ctx context.Context, tokenID string) (int, error) {
+	params := map[string]string{"token_id": tokenID}
+	var response struct {
+		BaseFee Decimal `json:"base_fee"`
+	}
+	if err := s.client.get(ctx, s.client.clobClient, "/fee-rate", params, &response); err != nil {
+		return 0, err
+	}
+	fee := int(response.BaseFee.Float64())
+	if fee < 0 {
+		return 0, fmt.Errorf("negative fee rate %d", fee)
+	}
+	return fee, nil
 }
 
 type ServerTime struct {
@@ -95,526 +329,216 @@ type ServerTime struct {
 	Epoch int64  `json:"epoch"`
 }
 
-type CreateOrder struct {
-	MarketID    string  `json:"market_id"`
-	Side        string  `json:"side"`
-	Outcome     string  `json:"outcome"`
-	Count       float64 `json:"count"`
-	Price       float64 `json:"price"`
-	OrderType   string  `json:"order_type"`
-	Expiration  int64   `json:"expiration,omitempty"`
-	GoodTill    int64   `json:"good_till,omitempty"`
-}
-
-type OrderResponse struct {
-	OrderID   string `json:"order_id"`
-	Status    string `json:"status"`
-	MarketID  string `json:"market_id"`
-	Side      string `json:"side"`
-	Outcome   string `json:"outcome"`
-	Count     float64 `json:"count"`
-	Price     float64 `json:"price"`
-	CreatedAt time.Time `json:"created_at"`
-}
-
-type CancelOrderRequest struct {
-	OrderID string `json:"order_id"`
-}
-
-type CancelOrdersRequest struct {
-	OrderIDs []string `json:"order_ids"`
-}
-
-type MarketOrdersRequest struct {
-	MarketID string `json:"market_id"`
-	Side     string `json:"side,omitempty"`
-}
-
-type UserOrdersParams struct {
-	MarketID   string `json:"market_id,omitempty"`
-	ActiveOnly bool   `json:"active_only,omitempty"`
-	Limit      int    `json:"limit,omitempty"`
-	Cursor     string `json:"cursor,omitempty"`
-}
-
-type UserOrdersResponse struct {
-	Orders     []OrderResponse `json:"orders"`
-	NextCursor string          `json:"next_cursor,omitempty"`
-	HasMore    bool            `json:"has_more,omitempty"`
-}
-
-type HeartbeatRequest struct {
-	Signature string `json:"signature"`
-	Timestamp int64  `json:"timestamp"`
-}
-
-type HeartbeatResponse struct {
-	Success bool   `json:"success"`
-	Message string `json:"message"`
-}
-
-type OrderScoringRequest struct {
-	OrderID string `json:"order_id"`
-}
-
-type OrderScoringResponse struct {
-	OrderID     string  `json:"order_id"`
-	Score       float64 `json:"score"`
-	Probability float64 `json:"probability"`
-	Status      string  `json:"status"`
-}
-
-func (s *CLOBService) GetOrderBook(ctx context.Context, marketID string) (*OrderBook, error) {
-	endpoint := "/book"
-	params := map[string]string{
-		"market_id": marketID,
+func (st *ServerTime) UnmarshalJSON(data []byte) error {
+	trimmed := strings.TrimSpace(string(data))
+	if strings.HasPrefix(trimmed, "{") {
+		type alias ServerTime
+		var wrapped alias
+		if err := json.Unmarshal(data, &wrapped); err != nil {
+			return err
+		}
+		*st = ServerTime(wrapped)
+		return nil
 	}
-	var orderBook OrderBook
-	err := s.client.get(ctx, s.client.clobClient, endpoint, params, &orderBook)
+	epoch, err := parseUnixTime(data)
 	if err != nil {
-		return nil, err
+		return err
 	}
-	return &orderBook, nil
-}
-
-type GetOrderBooksRequest struct {
-	MarketIDs []string `json:"market_ids"`
-}
-
-func (s *CLOBService) GetOrderBooks(ctx context.Context, request *GetOrderBooksRequest) (map[string]OrderBook, error) {
-	endpoint := "/book"
-	var result map[string]OrderBook
-	err := s.client.post(ctx, s.client.clobClient, endpoint, request, &result)
-	if err != nil {
-		return nil, err
-	}
-	return result, nil
-}
-
-func (s *CLOBService) GetMarketPrice(ctx context.Context, marketID string) (*MarketPrice, error) {
-	endpoint := "/price"
-	params := map[string]string{
-		"market_id": marketID,
-	}
-	var price MarketPrice
-	err := s.client.get(ctx, s.client.clobClient, endpoint, params, &price)
-	if err != nil {
-		return nil, err
-	}
-	return &price, nil
-}
-
-type GetMarketPricesParams struct {
-	MarketIDs []string `json:"market_ids,omitempty"`
-}
-
-func (s *CLOBService) GetMarketPrices(ctx context.Context, params *GetMarketPricesParams) ([]MarketPrice, error) {
-	endpoint := "/prices"
-	var prices []MarketPrice
-	
-	if params != nil && len(params.MarketIDs) > 0 {
-		err := s.client.post(ctx, s.client.clobClient, endpoint, params, &prices)
-		if err != nil {
-			return nil, err
-		}
-	} else {
-		err := s.client.get(ctx, s.client.clobClient, endpoint, nil, &prices)
-		if err != nil {
-			return nil, err
-		}
-	}
-	
-	return prices, nil
-}
-
-func (s *CLOBService) GetMidpointPrice(ctx context.Context, marketID string) (*MidpointPrice, error) {
-	endpoint := "/midpoint"
-	params := map[string]string{
-		"market_id": marketID,
-	}
-	var midpoint MidpointPrice
-	err := s.client.get(ctx, s.client.clobClient, endpoint, params, &midpoint)
-	if err != nil {
-		return nil, err
-	}
-	return &midpoint, nil
-}
-
-type GetMidpointPricesParams struct {
-	MarketIDs []string `json:"market_ids,omitempty"`
-}
-
-func (s *CLOBService) GetMidpointPrices(ctx context.Context, params *GetMidpointPricesParams) ([]MidpointPrice, error) {
-	endpoint := "/midpoints"
-	var prices []MidpointPrice
-	
-	if params != nil && len(params.MarketIDs) > 0 {
-		err := s.client.post(ctx, s.client.clobClient, endpoint, params, &prices)
-		if err != nil {
-			return nil, err
-		}
-	} else {
-		err := s.client.get(ctx, s.client.clobClient, endpoint, nil, &prices)
-		if err != nil {
-			return nil, err
-		}
-	}
-	
-	return prices, nil
-}
-
-func (s *CLOBService) GetSpread(ctx context.Context, marketID string) (*Spread, error) {
-	endpoint := "/spread"
-	params := map[string]string{
-		"market_id": marketID,
-	}
-	var spread Spread
-	err := s.client.get(ctx, s.client.clobClient, endpoint, params, &spread)
-	if err != nil {
-		return nil, err
-	}
-	return &spread, nil
-}
-
-type GetSpreadsRequest struct {
-	MarketIDs []string `json:"market_ids"`
-}
-
-func (s *CLOBService) GetSpreads(ctx context.Context, request *GetSpreadsRequest) ([]Spread, error) {
-	endpoint := "/spreads"
-	var spreads []Spread
-	err := s.client.post(ctx, s.client.clobClient, endpoint, request, &spreads)
-	if err != nil {
-		return nil, err
-	}
-	return spreads, nil
-}
-
-func (s *CLOBService) GetLastTradePrice(ctx context.Context, marketID string) (*TradePrice, error) {
-	endpoint := "/last-trade-price"
-	params := map[string]string{
-		"market_id": marketID,
-	}
-	var price TradePrice
-	err := s.client.get(ctx, s.client.clobClient, endpoint, params, &price)
-	if err != nil {
-		return nil, err
-	}
-	return &price, nil
-}
-
-type GetLastTradePricesParams struct {
-	MarketIDs []string `json:"market_ids,omitempty"`
-}
-
-func (s *CLOBService) GetLastTradePrices(ctx context.Context, params *GetLastTradePricesParams) ([]TradePrice, error) {
-	endpoint := "/last-trade-prices"
-	var prices []TradePrice
-	
-	if params != nil && len(params.MarketIDs) > 0 {
-		err := s.client.post(ctx, s.client.clobClient, endpoint, params, &prices)
-		if err != nil {
-			return nil, err
-		}
-	} else {
-		err := s.client.get(ctx, s.client.clobClient, endpoint, nil, &prices)
-		if err != nil {
-			return nil, err
-		}
-	}
-	
-	return prices, nil
-}
-
-type GetPriceHistoryParams struct {
-	MarketID   string `json:"market_id"`
-	Interval   string `json:"interval,omitempty"`
-	StartTime  int64  `json:"start_time,omitempty"`
-	EndTime    int64  `json:"end_time,omitempty"`
-	Limit      int    `json:"limit,omitempty"`
-}
-
-func (s *CLOBService) GetPriceHistory(ctx context.Context, params *GetPriceHistoryParams) (*PriceHistory, error) {
-	endpoint := "/price-history"
-	queryParams := make(map[string]string)
-	
-	if params != nil {
-		if params.MarketID != "" {
-			queryParams["market_id"] = params.MarketID
-		}
-		if params.Interval != "" {
-			queryParams["interval"] = params.Interval
-		}
-		if params.StartTime > 0 {
-			queryParams["start_time"] = string(rune(params.StartTime))
-		}
-		if params.EndTime > 0 {
-			queryParams["end_time"] = string(rune(params.EndTime))
-		}
-		if params.Limit > 0 {
-			queryParams["limit"] = string(rune(params.Limit))
-		}
-	}
-	
-	var history PriceHistory
-	err := s.client.get(ctx, s.client.clobClient, endpoint, queryParams, &history)
-	if err != nil {
-		return nil, err
-	}
-	return &history, nil
-}
-
-func (s *CLOBService) GetFeeRate(ctx context.Context, marketID string) (*FeeRate, error) {
-	endpoint := "/fee-rate"
-	params := map[string]string{
-		"market_id": marketID,
-	}
-	var fee FeeRate
-	err := s.client.get(ctx, s.client.clobClient, endpoint, params, &fee)
-	if err != nil {
-		return nil, err
-	}
-	return &fee, nil
-}
-
-func (s *CLOBService) GetTickSize(ctx context.Context, marketID string) (*TickSize, error) {
-	endpoint := "/tick-size"
-	params := map[string]string{
-		"market_id": marketID,
-	}
-	var tickSize TickSize
-	err := s.client.get(ctx, s.client.clobClient, endpoint, params, &tickSize)
-	if err != nil {
-		return nil, err
-	}
-	return &tickSize, nil
+	st.Epoch = epoch
+	st.ISO = time.Unix(epoch, 0).UTC().Format(time.RFC3339)
+	return nil
 }
 
 func (s *CLOBService) GetServerTime(ctx context.Context) (*ServerTime, error) {
-	endpoint := "/time"
-	var time ServerTime
-	err := s.client.get(ctx, s.client.clobClient, endpoint, nil, &time)
-	if err != nil {
+	var serverTime ServerTime
+	if err := s.client.get(ctx, s.client.clobClient, "/time", nil, &serverTime); err != nil {
 		return nil, err
 	}
-	return &time, nil
+	return &serverTime, nil
 }
 
+type CreateOrder struct {
+	MarketID   string  `json:"market_id"`
+	TokenID    string  `json:"token_id,omitempty"`
+	Side       string  `json:"side"`
+	Outcome    string  `json:"outcome"`
+	Count      float64 `json:"count"`
+	Price      float64 `json:"price"`
+	OrderType  string  `json:"order_type"`
+	Expiration int64   `json:"expiration,omitempty"`
+}
+
+type OrderResponse struct {
+	OrderID   string    `json:"order_id"`
+	Status    string    `json:"status"`
+	MarketID  string    `json:"market_id"`
+	Side      string    `json:"side"`
+	Outcome   string    `json:"outcome"`
+	Count     float64   `json:"count"`
+	Price     float64   `json:"price"`
+	CreatedAt time.Time `json:"created_at"`
+}
+
+// CreateOrder fails closed. A real CLOB order is an EIP-712 signature over
+// tokenID, price, size, side, salt and expiration, produced by the owner key.
+// Sending an unsigned JSON body to /order cannot work and would only create a
+// false sense of security.
 func (s *CLOBService) CreateOrder(ctx context.Context, order *CreateOrder) (*OrderResponse, error) {
-	endpoint := "/order"
-	var response OrderResponse
-	err := s.client.post(ctx, s.client.clobClient, endpoint, order, &response)
-	if err != nil {
+	return nil, ErrLiveOrderingDisabled
+}
+
+type UserOrdersParams struct {
+	MarketID   string
+	ActiveOnly bool
+	Limit      int
+	Cursor     string
+}
+
+type UserOrder struct {
+	OrderID   string    `json:"id"`
+	MarketID  string    `json:"market"`
+	TokenID   string    `json:"asset_id"`
+	Side      string    `json:"side"`
+	Outcome   string    `json:"outcome"`
+	Price     float64   `json:"price"`
+	Size      float64   `json:"original_size"`
+	Matched   float64   `json:"size_matched"`
+	Status    string    `json:"status"`
+	CreatedAt time.Time `json:"created_at"`
+}
+
+type UserOrdersResponse struct {
+	Orders []UserOrder
+}
+
+func (r *UserOrdersResponse) UnmarshalJSON(data []byte) error {
+	trimmed := strings.TrimSpace(string(data))
+	if strings.HasPrefix(trimmed, "[") {
+		var orders []UserOrder
+		if err := json.Unmarshal(data, &orders); err != nil {
+			return err
+		}
+		r.Orders = orders
+		return nil
+	}
+	type alias UserOrdersResponse
+	var wrapped alias
+	if err := json.Unmarshal(data, &wrapped); err != nil {
+		return err
+	}
+	*r = UserOrdersResponse(wrapped)
+	return nil
+}
+
+func (s *CLOBService) GetUserOrders(ctx context.Context, params *UserOrdersParams) (*UserOrdersResponse, error) {
+	queryParams := make(map[string]string)
+	if params != nil {
+		if params.MarketID != "" {
+			queryParams["market"] = params.MarketID
+		}
+		if params.Limit > 0 {
+			queryParams["limit"] = strconv.Itoa(params.Limit)
+		}
+		if params.Cursor != "" {
+			queryParams["next_cursor"] = params.Cursor
+		}
+	}
+	var response UserOrdersResponse
+	if err := s.client.get(ctx, s.client.clobClient, "/data/orders", queryParams, &response); err != nil {
 		return nil, err
+	}
+	if params != nil && params.ActiveOnly {
+		filtered := response.Orders[:0]
+		for _, order := range response.Orders {
+			if strings.EqualFold(order.Status, "LIVE") || strings.EqualFold(order.Status, "OPEN") {
+				filtered = append(filtered, order)
+			}
+		}
+		response.Orders = filtered
 	}
 	return &response, nil
 }
 
 func (s *CLOBService) CancelOrder(ctx context.Context, orderID string) error {
-	endpoint := "/order"
-	params := map[string]string{
-		"order_id": orderID,
+	if strings.TrimSpace(orderID) == "" {
+		return fmt.Errorf("order ID is required")
 	}
-	return s.client.delete(ctx, s.client.clobClient, endpoint, params)
+	body := map[string]string{"orderID": orderID}
+	if err := s.client.delete(ctx, s.client.clobClient, "/order", body, nil); err != nil {
+		return err
+	}
+	return nil
 }
 
-func (s *CLOBService) GetOrder(ctx context.Context, orderID string) (*OrderResponse, error) {
-	endpoint := "/order/" + orderID
-	var response OrderResponse
-	err := s.client.get(ctx, s.client.clobClient, endpoint, nil, &response)
-	if err != nil {
+type PostOrderPayload struct {
+	Order     *SignedOrder `json:"order"`
+	Owner     string       `json:"owner"`
+	OrderType string       `json:"orderType"`
+	DeferExec bool         `json:"deferExec"`
+	PostOnly  bool         `json:"postOnly,omitempty"`
+}
+
+type PostOrderResponse struct {
+	Success      bool     `json:"success"`
+	ErrorMsg     string   `json:"errorMsg"`
+	OrderID      string   `json:"orderID"`
+	OrderHashes  []string `json:"orderHashes"`
+	Status       string   `json:"status"`
+	TakingAmount string   `json:"takingAmount"`
+	MakingAmount string   `json:"makingAmount"`
+}
+
+func (s *CLOBService) PostOrder(ctx context.Context, owner string, orderType string, order *SignedOrder) (*PostOrderResponse, error) {
+	if order == nil {
+		return nil, fmt.Errorf("order is nil")
+	}
+	if strings.TrimSpace(owner) == "" {
+		return nil, fmt.Errorf("API key/owner is required")
+	}
+	if orderType == "" {
+		orderType = "GTC"
+	}
+	payload := &PostOrderPayload{
+		Order:     order,
+		Owner:     owner,
+		OrderType: strings.ToUpper(orderType),
+		DeferExec: false,
+	}
+	var response PostOrderResponse
+	if err := s.client.post(ctx, s.client.clobClient, "/order", payload, &response); err != nil {
 		return nil, err
+	}
+	if strings.TrimSpace(response.ErrorMsg) != "" {
+		return nil, fmt.Errorf("order rejected: %s", response.ErrorMsg)
+	}
+	if strings.TrimSpace(response.OrderID) == "" {
+		return nil, fmt.Errorf("order response did not include an order ID")
 	}
 	return &response, nil
 }
 
-func (s *CLOBService) CreateOrders(ctx context.Context, orders []CreateOrder) ([]OrderResponse, error) {
-	endpoint := "/orders"
-	var responses []OrderResponse
-	err := s.client.post(ctx, s.client.clobClient, endpoint, orders, &responses)
-	if err != nil {
+type LiveOrder struct {
+	ID              string          `json:"id"`
+	Status          string          `json:"status"`
+	Market          string          `json:"market"`
+	AssetID         string          `json:"asset_id"`
+	Side            string          `json:"side"`
+	Outcome         string          `json:"outcome"`
+	Price           Decimal         `json:"price"`
+	OriginalSize    Decimal         `json:"original_size"`
+	SizeMatched     Decimal         `json:"size_matched"`
+	Expiration      string          `json:"expiration"`
+	CreatedAt       json.RawMessage `json:"created_at"`
+	AssociateTrades []string        `json:"associate_trades"`
+}
+
+func (s *CLOBService) GetOrder(ctx context.Context, orderID string) (*LiveOrder, error) {
+	if strings.TrimSpace(orderID) == "" {
+		return nil, fmt.Errorf("order ID is required")
+	}
+	var order LiveOrder
+	if err := s.client.get(ctx, s.client.clobClient, "/data/order/"+orderID, nil, &order); err != nil {
 		return nil, err
 	}
-	return responses, nil
-}
-
-func (s *CLOBService) GetUserOrders(ctx context.Context, params *UserOrdersParams) (*UserOrdersResponse, error) {
-	endpoint := "/orders"
-	queryParams := make(map[string]string)
-	
-	if params != nil {
-		if params.MarketID != "" {
-			queryParams["market_id"] = params.MarketID
-		}
-		if params.ActiveOnly {
-			queryParams["active_only"] = "true"
-		}
-		if params.Limit > 0 {
-			queryParams["limit"] = string(rune(params.Limit))
-		}
-		if params.Cursor != "" {
-			queryParams["cursor"] = params.Cursor
-		}
-	}
-	
-	var response UserOrdersResponse
-	err := s.client.get(ctx, s.client.clobClient, endpoint, queryParams, &response)
-	if err != nil {
-		return nil, err
-	}
-	return &response, nil
-}
-
-func (s *CLOBService) CancelOrders(ctx context.Context, orderIDs []string) error {
-	endpoint := "/orders"
-	body := map[string]interface{}{
-		"order_ids": orderIDs,
-	}
-	return s.client.delete(ctx, s.client.clobClient, endpoint, body)
-}
-
-func (s *CLOBService) CancelAllOrders(ctx context.Context) error {
-	endpoint := "/orders"
-	return s.client.delete(ctx, s.client.clobClient, endpoint, nil)
-}
-
-func (s *CLOBService) CancelOrdersForMarket(ctx context.Context, marketID string) error {
-	endpoint := "/orders/" + marketID
-	return s.client.delete(ctx, s.client.clobClient, endpoint, nil)
-}
-
-func (s *CLOBService) GetOrderScoring(ctx context.Context, orderID string) (*OrderScoringResponse, error) {
-	endpoint := "/order-scoring"
-	params := map[string]string{
-		"order_id": orderID,
-	}
-	var response OrderScoringResponse
-	err := s.client.get(ctx, s.client.clobClient, endpoint, params, &response)
-	if err != nil {
-		return nil, err
-	}
-	return &response, nil
-}
-
-func (s *CLOBService) SendHeartbeat(ctx context.Context, heartbeat *HeartbeatRequest) (*HeartbeatResponse, error) {
-	endpoint := "/heartbeat"
-	var response HeartbeatResponse
-	err := s.client.post(ctx, s.client.clobClient, endpoint, heartbeat, &response)
-	if err != nil {
-		return nil, err
-	}
-	return &response, nil
-}
-
-func (s *CLOBService) GetProfile(ctx context.Context, walletAddress string) (interface{}, error) {
-	endpoint := "/profile/" + walletAddress
-	var profile interface{}
-	err := s.client.get(ctx, s.client.clobClient, endpoint, nil, &profile)
-	if err != nil {
-		return nil, err
-	}
-	return profile, nil
-}
-
-type GetPositionsParams struct {
-	UserID   string `json:"user_id,omitempty"`
-	MarketID string `json:"market_id,omitempty"`
-}
-
-func (s *CLOBService) GetPositions(ctx context.Context, params *GetPositionsParams) ([]UserPosition, error) {
-	endpoint := "/positions"
-	queryParams := make(map[string]string)
-	
-	if params != nil {
-		if params.UserID != "" {
-			queryParams["user_id"] = params.UserID
-		}
-		if params.MarketID != "" {
-			queryParams["market_id"] = params.MarketID
-		}
-	}
-	
-	var positions []UserPosition
-	err := s.client.get(ctx, s.client.clobClient, endpoint, queryParams, &positions)
-	if err != nil {
-		return nil, err
-	}
-	return positions, nil
-}
-
-type GetClosedPositionsParams struct {
-	UserID   string `json:"user_id,omitempty"`
-	Limit    int    `json:"limit,omitempty"`
-	Cursor   string `json:"cursor,omitempty"`
-}
-
-func (s *CLOBService) GetClosedPositions(ctx context.Context, params *GetClosedPositionsParams) (*GetUserPositionsResponse, error) {
-	endpoint := "/positions/closed"
-	queryParams := make(map[string]string)
-	
-	if params != nil {
-		if params.UserID != "" {
-			queryParams["user_id"] = params.UserID
-		}
-		if params.Limit > 0 {
-			queryParams["limit"] = string(rune(params.Limit))
-		}
-		if params.Cursor != "" {
-			queryParams["cursor"] = params.Cursor
-		}
-	}
-	
-	var response GetUserPositionsResponse
-	err := s.client.get(ctx, s.client.clobClient, endpoint, queryParams, &response)
-	if err != nil {
-		return nil, err
-	}
-	return &response, nil
-}
-
-func (s *CLOBService) GetUserTrades(ctx context.Context, params *GetTradesParams) (*GetTradesResponse, error) {
-	endpoint := "/trades"
-	queryParams := make(map[string]string)
-	
-	if params != nil {
-		if params.UserID != "" {
-			queryParams["user_id"] = params.UserID
-		}
-		if params.MarketID != "" {
-			queryParams["market_id"] = params.MarketID
-		}
-		if params.Limit > 0 {
-			queryParams["limit"] = string(rune(params.Limit))
-		}
-		if params.Cursor != "" {
-			queryParams["cursor"] = params.Cursor
-		}
-	}
-	
-	var response GetTradesResponse
-	err := s.client.get(ctx, s.client.clobClient, endpoint, queryParams, &response)
-	if err != nil {
-		return nil, err
-	}
-	return &response, nil
-}
-
-func (s *CLOBService) DownloadAccountingSnapshot(ctx context.Context, userID string) ([]byte, error) {
-	endpoint := "/accounting/" + userID
-	resp, err := s.client.clobClient.R().
-		SetContext(ctx).
-		SetDoNotParseResponse(true).
-		Get(endpoint)
-	
-	if err != nil {
-		return nil, fmt.Errorf("failed to download snapshot: %w", err)
-	}
-	
-	defer resp.RawBody().Close()
-	body, err := readResponseBody(resp.RawResponse)
-	if err != nil {
-		return nil, err
-	}
-	
-	return body, nil
+	return &order, nil
 }

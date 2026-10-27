@@ -1,279 +1,165 @@
-# Polymarket AI 交易机器人
+# Polymarket AI Bot (experimental research)
 
-一个基于人工智能的 Polymarket 预测市场自动化交易系统，具有高胜率的交易策略和严格的风险管理。
+This repository is an experimental Go codebase, not a proven profitable strategy or a production-ready trading bot. It supports **offline backtests, read-only market/arbitrage research, book-walking paper fills, and an explicitly gated live-order path**. Live ordering is off by default and must be enabled with explicit flags, credentials and confirmation; it has a hard $25 per-order cap. The strategy/API packages are not evidence of positive expected returns.
 
-## 🎯 核心特性
+The supported workflows are:
+1. offline CSV backtest over timestamped model predictions and resolved outcomes;
+2. read-only Gamma/CLOB market snapshots and Data API wallet inspection;
+3. read-only YES/NO and negRisk basket arbitrage scanning with JSONL logging;
+4. paper execution that walks visible order-book levels (VWAP, partial fills);
+5. EIP-712 signed single orders with a hard USD cap, dry-run by default.
 
-### 1. **多策略交易引擎**
-- **价值投注 (Value Betting)**: 识别市场定价错误，当 AI 预测概率与市场隐含概率存在显著差异时入场
-- **套利策略 (Arbitrage)**: 利用订单簿不平衡和市场价差进行套利
-- **动量策略 (Momentum)**: 基于价格趋势和交易量变化捕捉动量机会
-- **对冲策略 (Hedging)**: 自动对冲现有仓位，降低风险敞口
+Backtest results are only as reliable as the data and assumptions supplied; they do not predict future returns. See [REVIEW.md](REVIEW.md) for the code review and profitability analysis, and [LIVE_TRADING.md](LIVE_TRADING.md) before touching a real wallet.
 
-### 2. **AI 驱动的概率预测**
-- 集成多种 LLM 模型（Qwen、Claude、DeepSeek、OpenAI 等）
-- 基于市场数据、历史趋势、外部因素进行综合概率评估
-- 智能推理和关键因素分析
-- 概率校准和置信度评估
+## Requirements
 
-### 3. **严格的风险管理**
-- **Kelly 公式**优化仓位大小
-- **最大回撤控制**（默认 15%）
-- **每日亏损限制**（默认 500 USDC）
-- **仓位分散限制**（单一市场不超过 20%）
-- **流动性风险评估**（避免高滑点）
-- **置信度阈值**（最低 50% 置信度）
-
-### 4. **实时市场监控**
-- 订单簿深度分析
-- 交易量趋势检测
-- 流动性评分系统
-- 价格形态识别
-- 市场情绪分析
-
-### 5. **全面的监控和日志**
-- 实时性能指标追踪
-- 交易历史记录
-- 风险指标监控
-- 自动告警系统
-- 结构化日志输出
-
-## 📦 安装
-
-### 前置要求
 - Go 1.21+
-- Polymarket CLOB API 密钥（https://clob.polymarket.com）
-- LLM API 密钥（推荐使用 Qwen 或 DeepSeek）
+- No API keys are needed for tests, backtests, `-markets`, `-market`, or `-wallet`
 
-### 1. 克隆项目
-```bash
-git clone <your-repo-url>
-cd polymarket
+## Build and tests
+
+From the repository root:
+
+```powershell
+go test ./...
+go run ./cmd -h
 ```
 
-### 2. 安装依赖
-```bash
-go mod download
+## Read-only market and arbitrage research
+
+These commands only read public data. They never sign or submit orders.
+
+```powershell
+# Top active binary markets by 24h volume, filtered by liquidity
+go run ./cmd -markets 20
+
+# One market: Gamma metadata + YES order book, midpoint, logit features
+go run ./cmd -market 559651
+
+# Calibration report (Brier, log loss, reliability buckets)
+go run ./cmd -calibrate .\signals.csv -calibration-bins 10
+
+# Any wallet: current positions and recent trades (Data API)
+go run ./cmd -wallet 0x91430CaD2d3975766499717fA0D66A78D814E5c5
+
+# Scan 5 top events for YES/NO and negRisk basket arbitrage; append JSONL
+go run ./cmd -arb-scan 5 -arb-min-edge 0.005 -arb-out .\opportunities.jsonl
+
+# Repeat every 60 seconds until Ctrl+C (frequency study)
+go run ./cmd -arb-scan 20 -arb-interval 60 -arb-out .\opportunities.jsonl
+
+# Bound the per-event work (large sports events can have hundreds of markets)
+go run ./cmd -arb-scan 10 -arb-max-markets 25
 ```
 
-### 3. 配置文件
-复制并编辑配置文件：
-```bash
-cp polymarket_config.example.json polymarket_config.json
+Prices are printed as decimals in `[0, 1]` (Polymarket quotes `0.58`, not `58` cents). `-markets` defaults to excluding near-resolved markets; add `-min-price`, `-max-price`, and `-min-days` for your own universe. The arbitrage scanner uses best asks, visible size and Gamma `takerBaseFee`; it is a measurement tool, not an execution guarantee.
+
+### Arbitrage definitions
+
+- `BINARY_YES_NO`: buy YES and NO in the same market; payout is $1 per basket. Opportunity when `yesAsk + noAsk + fees < 1`.
+- `NEGRISK_YES`: in a negRisk event with N mutually exclusive markets, buy YES on all N; exactly one pays $1. Opportunity when `sum(yesAsk) + fees < 1`.
+- `NEGRISK_NO`: buy NO on all N; N-1 pay $1. Opportunity when `sum(noAsk) + fees < N-1`.
+
+The scanner requires every market in the event to be open and fetchable before reporting a basket. It reports `max_baskets` from top-of-book size and per-basket net edge after the configured fee estimate. Use JSONL output to measure how often and how long opportunities survive before building execution.
+
+## Research pipeline: collect → samples → calibration
+
+The collector only reads public data and writes JSONL under `data/`. The actual 320-market study and its **NO_EDGE** verdict are in [RESEARCH.md](RESEARCH.md); `data/` and `reports/` contain the matching artifacts.
+
+```powershell
+# Collect up to 5 settled binary markets with historical prices (default: last 30 days)
+go run ./cmd -collect-resolved 5 -data-dir .\data
+
+# Build timestamped samples at 7d/48h/24h/6h before close, plus reports
+go run ./cmd -build-samples -data-dir .\data -report-dir .\reports
+
+# Inspect both baselines
+go run ./cmd -calibrate .\reports\samples_market.csv -calibration-bins 10
+go run ./cmd -calibrate .\reports\samples_logit.csv -calibration-bins 10
 ```
 
-编辑 `polymarket_config.json`，填入你的 API 密钥：
-```json
-{
-  "polymarket": {
-    "api_key": "你的 Polymarket API Key",
-    "api_secret": "你的 Polymarket API Secret",
-    "passphrase": "你的 Polymarket Passphrase"
-  },
-  "ai": {
-    "provider": "deepseek",
-    "model": "deepseek-chat",
-    "api_key": "你的 DeepSeek API Key"
-  },
-  "trading": {
-    "enabled": false,
-    "mode": "paper"
-  }
-}
+`-build-samples` produces:
+
+- `reports/samples_market.csv`: model probability = market price (baseline A)
+- `reports/samples_logit.csv`: P(YES) = sigmoid(logit(price) + w × ROC_logit) (transparent baseline B)
+- `reports/calibration_*.json`, `reports/sample_summary.json`
+- `reports/calibration_*_holdout.json`: last 30% of event groups by resolution time, never used to tune the weight
+- `reports/samples_*_holdout.csv`: the held-out event groups only
+
+Both files contain the same rows, so the Brier comparison is on identical decisions. The holdout is split by event group (all markets in a negRisk/multi-market event stay together), not by individual sample. `brier_improvement_logit_vs_market` is positive when the logit baseline has lower Brier. The default logit baseline is deliberately fixed at `w=0.5`; changing `-momentum-weight` after looking at the holdout is overfitting. Continue only if the logit model beats the market price on the chronological holdout, before fees, and then still passes the offline backtest with realistic fees/slippage.
+
+For non-Yes/No binary markets (e.g. Over/Under), `resolved_outcome=YES` means the first outcome, matching the collector's first CLOB token.
+
+CLOB often returns no history for older settled markets. The collector retries at 1-minute fidelity, then skips the market; it never fills missing prices. The default window is 30 days because older history is frequently unavailable. Run the collector periodically to build a real sample.
+
+## Offline backtest
+
+Prepare a CSV with one independent hypothetical trade opportunity per row:
+
+```csv
+timestamp,market_id,market_yes_price,model_yes_probability,resolved_outcome
+2026-01-01T12:00:00Z,example-market,0.42,0.55,YES
+2026-01-02T12:00:00Z,another-market,0.61,0.48,NO
 ```
 
-### 4. 环境变量（可选）
-```bash
-export POLYMARKET_API_KEY="your-api-key"
-export POLYMARKET_API_SECRET="your-api-secret"
-export POLYMARKET_PASSPHRASE="your-passphrase"
-export AI_API_KEY="your-llm-api-key"
+Probabilities and prices are decimals from 0 to 1. `timestamp` must be RFC3339. `resolved_outcome` is `YES` or `NO`. The model probability and entry price must have been recorded at the timestamp, before resolution; do not generate predictions using information learned later.
+
+Run from the repository root, and explicitly supply fee and slippage assumptions. The CLI intentionally does not default these costs to zero:
+
+```powershell
+go run ./cmd -backtest .\signals.csv -capital 10000 -stake 100 -min-edge 0.05 -fee-bps 200 -slippage-bps 100
 ```
 
-## 🚀 使用方法
+The tool buys YES when the model probability exceeds the market YES price by at least `min-edge`; it buys NO when the difference is at most the negative threshold. Stake is fixed and trades settle sequentially. Results include trade count, net P&L, return, win rate (percent), profit factor, maximum drawdown (fraction of peak capital), costs, and a per-trade log. Profit factor is `null` when the sample has no losing trades.
 
-### 启动机器人
-```bash
-cd cmd
-go run main.go -config=../polymarket_config.json
+`fee-bps` is a simplified fee assumption applied to stake, and `slippage-bps` adversely adjusts the entry price by a percentage of the quoted outcome price. These are configurable approximations, not Polymarket's exact fee schedule or an order-book execution model. The backtest does not model overlapping positions, market impact, partial fills, liquidity limits, funding, or correlated exposure. Use conservative costs and genuinely out-of-sample, timestamped data.
+
+## Configuration and current limits
+
+`polymarket_config.example.json` contains an empty template. Copy it to `polymarket_config.json` only if you need to inspect configuration behavior; that local filename is git-ignored.
+
+```powershell
+Copy-Item .\polymarket_config.example.json .\polymarket_config.json
+go run ./cmd -config .\polymarket_config.json -status
 ```
 
-### 命令行选项
-```bash
-# 查看状态
-go run main.go -status
+Credentials can also come from `POLYMARKET_API_KEY`, `POLYMARKET_API_SECRET`, `POLYMARKET_PASSPHRASE`, `POLYMARKET_WALLET_ADDRESS`, `POLYMARKET_FUNDER_ADDRESS`, `POLYMARKET_SIGNATURE_TYPE`, `POLYMARKET_CHAIN_ID`, `POLYMARKET_PRIVATE_KEY`, and `AI_API_KEY`. The CLOB L2 secret is used only as an HMAC key and is never sent as a header. `POLYMARKET_PRIVATE_KEY` is read from the environment only and is never written to the config file.
 
-# 查看交易指标
-go run main.go -metrics
+The default mode is `paper`, with trading disabled. `-status` reports configuration only; it does not check API connectivity. `-metrics`, `-positions`, `-pause`, and `-resume` still report missing persistent runtime state. The automatic online bot loop is not implemented.
 
-# 查看持仓
-go run main.go -positions
+The API packages read Gamma, CLOB order books/prices/history, and Data API positions/trades. The legacy `CLOBService.CreateOrder` still fails closed; real orders go through `OrderSigner` (EIP-712) and `LiveExecutor` (submit + reconcile). A single small order can be signed and sent with the gated CLI below; see [LIVE_TRADING.md](LIVE_TRADING.md) for the full checklist.
 
-# 暂停交易
-go run main.go -pause
+### Paper execution
 
-# 恢复交易
-go run main.go -resume
+`PaperExecutor` walks the visible ask/bid levels, computes VWAP, supports partial fills and applies a configurable fee. It does not model queue position or latency, so paper results remain optimistic. The strategy engine now uses this executor for paper mode instead of filling instantly at the top price.
+
+### Live order path (off by default)
+
+```powershell
+# Dry-run: sign and print the order without sending it
+go run ./cmd -live-order <TOKEN_ID> -live-shares 5 -live-price 0.10 -live-max-usd 5
+
+# Actually send a tiny FAK order (multiple guards required)
+$env:POLYMARKET_PRIVATE_KEY = '0x...'
+$env:POLYMARKET_WALLET_ADDRESS = '0x...'
+$env:POLYMARKET_API_KEY = '...'
+$env:POLYMARKET_API_SECRET = '...'
+$env:POLYMARKET_PASSPHRASE = '...'
+go run ./cmd -live-order <TOKEN_ID> -live-shares 5 -live-price 0.10 -live-max-usd 5 `
+  -live-dry-run=false -live-confirm=I_UNDERSTAND
 ```
 
-## 📊 策略详解
+Sending also requires `trading.mode=live`, `trading.enabled=true`, `trading.allow_live=true`, `POLYMARKET_ALLOW_LIVE=1`, a non-empty `trading.allowed_tokens` whitelist containing the token, an absent STOP file, `-live-confirm=I_UNDERSTAND`, a hard per-order cap of at most $25, and a two-second abort window. Do not use a wallet with funds until you have read [LIVE_TRADING.md](LIVE_TRADING.md) and verified allowances/funder/signature type.
 
-### 价值投注策略 (VALUE_BET)
-**原理**: 当 AI 预测的事件发生概率与市场隐含概率存在显著差异时下注。
+The unattended path has the article's safety gates: `STOP` file kill switch, token whitelist, single-order cap, daily-loss/drawdown halts, heartbeat file for `-arb-scan -arb-interval`, and a `-live-cancel` command.
 
-**入场条件**:
-- AI 概率与市场隐含概率差异 > 5%
-- 置信度 > 50%
-- 流动性 > 5000 USDC
-- 24 小时交易量 > 10000 USDC
-
-**仓位计算**: 使用 Kelly 公式的 25%（保守版本）
-
-### 套利策略 (ARBITRAGE)
-**原理**: 利用订单簿不平衡或相关市场间的价差进行套利。
-
-**入场条件**:
-- 订单簿不平衡度 > 20%
-- 预期价值 > 3%
-- 买卖价差足够覆盖手续费
-
-### 动量策略 (MOMENTUM)
-**原理**: 跟随市场趋势，在强势突破时入场。
-
-**入场条件**:
-- 价格趋势强度 > 2%
-- 交易量放大 > 20%
-- 置信度 > 60%
-
-### 对冲策略 (HEDGE)
-**原理**: 当现有仓位盈利达到一定比例时，自动对冲锁定利润。
-
-**触发条件**:
-- 仓位盈利 > 50%
-- 市场出现反转信号
-
-## ⚙️ 配置说明
-
-### 风险管理配置
-```json
-{
-  "risk": {
-    "total_capital": 10000,        // 总资金 (USDC)
-    "max_position_size": 500,      // 单一仓位最大规模
-    "max_position_percent": 0.05,  // 单一仓位最大占比 (5%)
-    "daily_loss_limit": 500,       // 每日最大亏损
-    "max_drawdown": 0.15,          // 最大回撤 (15%)
-    "kelly_multiplier": 0.25,      // Kelly 系数 (0.25=保守)
-    "min_confidence": 50.0,        // 最低置信度 (%)
-    "max_liquidity_slippage": 0.05 // 最大滑点 (5%)
-  }
-}
+```powershell
+# Cancel a live order by ID
+go run ./cmd -live-cancel <ORDER_ID>
 ```
 
-### AI 配置
-```json
-{
-  "ai": {
-    "provider": "deepseek",         // AI 提供商
-    "model": "deepseek-chat",       // 模型名称
-    "temperature": 0.3,             // 温度参数 (低=保守)
-    "max_tokens": 2000,             // 最大输出长度
-    "cache_enabled": true,          // 启用缓存
-    "cache_ttl": 1800               // 缓存时间 (秒)
-  }
-}
-```
+`GetLiveVolume`, `GetTopHolders`, and leaderboard/builder endpoints have not been validated against live responses and should not be relied on. The full list of remaining work is in [REVIEW.md](REVIEW.md).
 
-### 交易配置
-```json
-{
-  "trading": {
-    "enabled": false,               // 是否启用交易
-    "mode": "paper",                // 模式：paper/live
-    "scan_interval": 60,            // 市场扫描间隔 (秒)
-    "max_open_positions": 10,       // 最大持仓数量
-    "min_liquidity": 5000,          // 最小流动性
-    "min_volume_24h": 10000,        // 最小 24h 交易量
-    "allowed_strategies": [         // 启用的策略
-      "VALUE_BET",
-      "ARBITRAGE",
-      "MOMENTUM"
-    ]
-  }
-}
-```
+## Strategy research cautions
 
-## 📈 性能指标
-
-### 关键指标说明
-- **Win Rate (胜率)**: 盈利交易占比
-- **Sharpe Ratio (夏普比率)**: 风险调整后收益
-- **Max Drawdown (最大回撤)**: 历史最大亏损幅度
-- **Profit Factor (盈利因子)**: 总盈利/总亏损
-- **Expected Value (期望值)**: 平均每笔交易的预期收益
-
-### 查看实时指标
-```bash
-go run main.go -metrics
-```
-
-## 🛡️ 风险管理
-
-### 自动风控措施
-1. **交易暂停**: 触及日亏损限制时自动停止
-2. **回撤控制**: 触及最大回撤时清仓并停止
-3. **仓位限制**: 单一市场不超过总资金的 20%
-4. **流动性筛选**: 避开低流动性市场（高滑点风险）
-5. **置信度过滤**: 只交易高置信度机会
-
-### 手动控制
-```bash
-# 紧急暂停
-go run main.go -pause
-
-# 恢复交易
-go run main.go -resume
-```
-
-## 📝 日志示例
-
-```json
-{"timestamp":"2026-02-28T12:00:00Z","level":"INFO","message":"Trading signal: VALUE_BET","module":"signal","metadata":{"strength":0.12,"confidence":75,"direction":"YES"}}
-{"timestamp":"2026-02-28T12:00:01Z","level":"INFO","message":"Order executed: ORD123456","module":"executor","metadata":{"market_id":"MKT789","strategy":"VALUE_BET","side":"BUY","size":250,"price":0.65}}
-```
-
-## ⚠️ 风险提示
-
-1. **预测市场风险**: Polymarket 是高风险的去中心化预测市场，可能导致本金全部损失
-2. **模型风险**: AI 预测不保证准确性，历史表现不代表未来
-3. **技术风险**: API 故障、网络延迟等技术问题可能导致损失
-4. **流动性风险**: 低流动性市场可能无法及时平仓
-5. **监管风险**: 预测市场在某些司法管辖区可能不受监管
-
-**重要**: 只使用你能承受损失的资金进行交易！
-
-## 📚 API 参考
-
-### Polymarket API
-- **Gamma API**: https://gamma-api.polymarket.com - 市场数据
-- **Data API**: https://data-api.polymarket.com - 用户数据
-- **CLOB API**: https://clob.polymarket.com - 订单簿和交易
-
-### 文档
-- 官方文档：https://docs.polymarket.com/api-reference/introduction
-
-## 🤝 贡献
-
-欢迎提交 Issue 和 Pull Request！
-
-## 📄 许可证
-
-本项目采用 MIT 许可证。
-
-## 📞 支持
-
-如有问题，请提交 Issue 或联系开发者。
-
----
-
-**免责声明**: 本软件仅供教育和研究目的，不构成投资建议。使用本软件进行交易存在重大风险，用户需自行承担所有风险。
+The existing analyzer no longer invents a "fair value" from price, volume or order-book imbalance: those heuristics are not calibrated forecasts, and imbalance is often adverse selection rather than an edge. `CalculateFairValue` now returns the market-implied probability unless a caller supplies a validated model probability. `AIPredictor` is an optional LLM layer, not proven alpha. The named strategy implementations have not been validated by a credible backtest. The Kelly sizing code and risk controls are not substitutes for evidence of an edge. No win-rate, Sharpe ratio, or return claim is made by this project. See [REVIEW.md](REVIEW.md) for a realistic discussion of structural arbitrage, market making, event latency, calibration, and why an LLM alone is not an edge.

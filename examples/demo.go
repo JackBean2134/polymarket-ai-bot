@@ -1,10 +1,8 @@
 package main
 
 import (
-	"context"
 	"fmt"
 	"log"
-	"time"
 
 	"github.com/ChainOpera-Network/nofx/polymarket"
 )
@@ -28,25 +26,9 @@ func main() {
 	fmt.Printf("   Max Position: $%.2f\n", config.Risk.MaxPositionSize)
 	fmt.Println()
 
-	// Create API client
-	client := polymarket.NewClient(polymarket.ClientConfig{
-		APIKey:     config.Polymarket.APIKey,
-		APISecret:  config.Polymarket.APISecret,
-		Passphrase: config.Polymarket.Passphrase,
-		Timeout:    config.GetTimeout(),
-		RetryCount: config.GetRetryCount(),
-	})
-
-	fmt.Println("✅ API client initialized")
-	fmt.Println()
-
-	// Create services
-	analyzer := polymarket.NewMarketAnalyzer(client)
 	riskManager := polymarket.NewRiskManager(&config.Risk)
 
-	fmt.Println("✅ Services initialized:")
-	fmt.Println("   - Market Analyzer")
-	fmt.Println("   - Risk Manager")
+	fmt.Println("✅ Risk manager initialized (no API calls or trading are performed)")
 	fmt.Println()
 
 	// Display risk configuration
@@ -93,8 +75,8 @@ func main() {
 		Strength:      0.12,
 		Confidence:    72.5,
 		ExpectedValue: 0.12,
-		CurrentPrice:  58.0,
-		FairValue:     70.0,
+		CurrentPrice:  0.58,
+		FairValue:     0.70,
 		Assessment: &polymarket.ValueAssessment{
 			AIProbability:     0.70,
 			MarketImpliedProb: 0.58,
@@ -108,9 +90,9 @@ func main() {
 	fmt.Printf("   Market: %s\n", sampleSignal.MarketTitle)
 	fmt.Printf("   Strategy: %s\n", sampleSignal.Strategy)
 	fmt.Printf("   Direction: %s\n", sampleSignal.Direction)
-	fmt.Printf("   Current Price: %.2f cents (Implied Prob: %.1f%%)\n", 
-		sampleSignal.CurrentPrice, sampleSignal.CurrentPrice)
-	fmt.Printf("   AI Fair Value: %.2f cents (AI Prob: %.1f%%)\n", 
+	fmt.Printf("   Current Price: %.4f (Implied Prob: %.1f%%)\n",
+		sampleSignal.CurrentPrice, sampleSignal.CurrentPrice*100)
+	fmt.Printf("   AI Fair Value: %.4f (AI Prob: %.1f%%)\n",
 		sampleSignal.FairValue, sampleSignal.Assessment.AIProbability*100)
 	fmt.Printf("   Edge: %.2f%%\n", sampleSignal.Assessment.EdgePercent)
 	fmt.Printf("   Confidence: %.1f%%\n", sampleSignal.Confidence)
@@ -121,7 +103,7 @@ func main() {
 	fmt.Println("💰 Position Sizing:")
 	fmt.Printf("   Calculated Size: $%.2f\n", positionSize)
 	fmt.Printf("   Max Allowed: $%.2f\n", config.Risk.MaxPositionSize)
-	fmt.Printf("   Position % of Capital: %.2f%%\n", (positionSize/config.Risk.TotalCapital)*100)
+	fmt.Printf("   Position %% of Capital: %.2f%%\n", (positionSize/config.Risk.TotalCapital)*100)
 	fmt.Println()
 
 	// Validate signal
@@ -135,11 +117,11 @@ func main() {
 	// Display available strategies
 	fmt.Println("🎯 Available Trading Strategies:")
 	fmt.Println()
-	
-	strategies := []struct{
-		name string
+
+	strategies := []struct {
+		name        string
 		description string
-		condition string
+		condition   string
 	}{
 		{
 			"VALUE_BET",
@@ -170,26 +152,17 @@ func main() {
 		fmt.Println()
 	}
 
-	// Performance expectations
-	fmt.Println("📊 Expected Performance Metrics:")
-	fmt.Println()
-	fmt.Println("   Conservative Estimates (Annual):")
-	fmt.Printf("   - Win Rate: 55-65%%\n")
-	fmt.Printf("   - Sharpe Ratio: 1.5-2.0\n")
-	fmt.Printf("   - Max Drawdown: < 15%%\n")
-	fmt.Printf("   - Profit Factor: 1.8-2.5\n")
-	fmt.Printf("   - Expected Return: 20-40%% (varies greatly)\n")
+	fmt.Println("📊 No backtest or live performance history is included with this project.")
+	fmt.Println("   The sample signal and position size below are illustrative only.")
 	fmt.Println()
 
 	// Next steps
 	fmt.Println("🚀 Next Steps:")
 	fmt.Println()
-	fmt.Println("   1. Edit polymarket_config.json with your API keys")
-	fmt.Println("   2. Start with PAPER mode to test strategies")
-	fmt.Println("   3. Monitor signals and performance for 1-2 weeks")
-	fmt.Println("   4. Adjust risk parameters based on your comfort level")
-	fmt.Println("   5. Switch to LIVE mode with small capital")
-	fmt.Println("   6. Gradually increase position sizes as you gain confidence")
+	fmt.Println("   1. Keep the default paper mode until you have a calibrated edge")
+	fmt.Println("   2. Prepare timestamped predictions, entry prices, and resolved outcomes")
+	fmt.Println("   3. Run the CSV backtest and use -arb-scan for read-only opportunity stats")
+	fmt.Println("   4. Read LIVE_TRADING.md before using -live-order; it is dry-run by default")
 	fmt.Println()
 
 	// Important warnings
@@ -215,6 +188,4 @@ func main() {
 	fmt.Println("Ready to start! Run: go run main.go")
 	fmt.Println()
 
-	// Keep the program running briefly to show all output
-	time.Sleep(2 * time.Second)
 }

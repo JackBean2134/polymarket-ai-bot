@@ -26,6 +26,8 @@ vendor/
 
 # Environment variables
 .env
+.env.*
+!.env.example
 
 # Configuration files with secrets
 polymarket_config.json

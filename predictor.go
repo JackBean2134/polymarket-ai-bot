@@ -22,18 +22,18 @@ type PredictionCache struct {
 }
 
 type AIPrediction struct {
-	MarketID      string    `json:"market_id"`
-	MarketTitle   string    `json:"market_title"`
-	Prediction    string    `json:"prediction"`
-	Probability   float64   `json:"probability"`
-	Confidence    float64   `json:"confidence"`
-	Reasoning     string    `json:"reasoning"`
-	KeyFactors    []string  `json:"key_factors"`
-	RiskAssessment string   `json:"risk_assessment"`
-	TimeHorizon   string    `json:"time_horizon"`
+	MarketID             string                `json:"market_id"`
+	MarketTitle          string                `json:"market_title"`
+	Prediction           string                `json:"prediction"`
+	Probability          float64               `json:"probability"`
+	Confidence           float64               `json:"confidence"`
+	Reasoning            string                `json:"reasoning"`
+	KeyFactors           []string              `json:"key_factors"`
+	RiskAssessment       string                `json:"risk_assessment"`
+	TimeHorizon          string                `json:"time_horizon"`
 	AlternativeScenarios []AlternativeScenario `json:"alternative_scenarios"`
-	CreatedAt     time.Time `json:"created_at"`
-	ExpiresAt     time.Time `json:"expires_at"`
+	CreatedAt            time.Time             `json:"created_at"`
+	ExpiresAt            time.Time             `json:"expires_at"`
 }
 
 type AlternativeScenario struct {
@@ -43,30 +43,31 @@ type AlternativeScenario struct {
 }
 
 type PredictionRequest struct {
-	MarketID      string                 `json:"market_id"`
-	MarketTitle   string                 `json:"market_title"`
-	MarketData    *MarketContext         `json:"market_data"`
-	HistoricalData *HistoricalContext    `json:"historical_data,omitempty"`
-	ExternalFactors []ExternalFactor     `json:"external_factors,omitempty"`
+	MarketID          string             `json:"market_id"`
+	MarketTitle       string             `json:"market_title"`
+	MarketDescription string             `json:"market_description,omitempty"`
+	MarketData        *MarketContext     `json:"market_data"`
+	HistoricalData    *HistoricalContext `json:"historical_data,omitempty"`
+	ExternalFactors   []ExternalFactor   `json:"external_factors,omitempty"`
 }
 
 type MarketContext struct {
-	CurrentPrice    float64 `json:"current_price"`
-	YesPrice        float64 `json:"yes_price"`
-	NoPrice         float64 `json:"no_price"`
-	Volume24h       float64 `json:"volume_24h"`
-	OpenInterest    float64 `json:"open_interest"`
-	Liquidity       float64 `json:"liquidity"`
-	TimeToExpiry    string  `json:"time_to_expiry"`
-	ExpirationValue string  `json:"expiration_value"`
+	CurrentPrice       float64 `json:"current_price"`
+	YesPrice           float64 `json:"yes_price"`
+	NoPrice            float64 `json:"no_price"`
+	Volume24h          float64 `json:"volume_24h"`
+	OpenInterest       float64 `json:"open_interest"`
+	Liquidity          float64 `json:"liquidity"`
+	TimeToExpiry       string  `json:"time_to_expiry"`
+	ExpirationValue    string  `json:"expiration_value"`
 	OrderBookImbalance float64 `json:"order_book_imbalance"`
-	RecentTrend     string  `json:"recent_trend"`
+	RecentTrend        string  `json:"recent_trend"`
 }
 
 type HistoricalContext struct {
-	PriceHistory    []PricePoint `json:"price_history"`
-	VolumeHistory   []VolumePoint `json:"volume_history"`
-	SimilarEvents   []SimilarEvent `json:"similar_events,omitempty"`
+	PriceHistory  []PricePoint   `json:"price_history"`
+	VolumeHistory []VolumePoint  `json:"volume_history"`
+	SimilarEvents []SimilarEvent `json:"similar_events,omitempty"`
 }
 
 type PricePoint struct {
@@ -80,26 +81,26 @@ type VolumePoint struct {
 }
 
 type SimilarEvent struct {
-	Title  string  `json:"title"`
-	Result string  `json:"result"`
+	Title    string  `json:"title"`
+	Result   string  `json:"result"`
 	Accuracy float64 `json:"accuracy"`
 }
 
 type ExternalFactor struct {
-	Category    string  `json:"category"`
-	Description string  `json:"description"`
-	Impact      string  `json:"impact"`
-	Confidence  float64 `json:"confidence"`
-	Source      string  `json:"source,omitempty"`
+	Category    string    `json:"category"`
+	Description string    `json:"description"`
+	Impact      string    `json:"impact"`
+	Confidence  float64   `json:"confidence"`
+	Source      string    `json:"source,omitempty"`
 	Timestamp   time.Time `json:"timestamp,omitempty"`
 }
 
 type PredictionResponse struct {
-	Success     bool         `json:"success"`
-	Prediction  *AIPrediction `json:"prediction,omitempty"`
-	Error       string       `json:"error,omitempty"`
-	Latency     int64        `json:"latency_ms"`
-	TokenUsage  *TokenUsage  `json:"token_usage,omitempty"`
+	Success    bool          `json:"success"`
+	Prediction *AIPrediction `json:"prediction,omitempty"`
+	Error      string        `json:"error,omitempty"`
+	Latency    int64         `json:"latency_ms"`
+	TokenUsage *TokenUsage   `json:"token_usage,omitempty"`
 }
 
 type TokenUsage struct {
@@ -109,17 +110,30 @@ type TokenUsage struct {
 }
 
 func NewAIPredictor(llmClient *LLMClient) *AIPredictor {
+	return NewAIPredictorWithTTL(llmClient, 30*time.Minute)
+}
+
+func NewAIPredictorWithTTL(llmClient *LLMClient, ttl time.Duration) *AIPredictor {
+	if ttl <= 0 {
+		ttl = 30 * time.Minute
+	}
 	return &AIPredictor{
 		llmClient: llmClient,
 		cache: &PredictionCache{
 			predictions: make(map[string]*AIPrediction),
 			lastUpdate:  make(map[string]time.Time),
-			ttl:         30 * time.Minute,
+			ttl:         ttl,
 		},
 	}
 }
 
 func (ap *AIPredictor) Predict(ctx context.Context, req *PredictionRequest) (*AIPrediction, error) {
+	if req == nil {
+		return nil, fmt.Errorf("prediction request is nil")
+	}
+	if ap.llmClient == nil {
+		return nil, fmt.Errorf("LLM client is not configured")
+	}
 	cacheKey := req.MarketID
 	if cached, ok := ap.cache.get(cacheKey); ok {
 		return cached, nil
@@ -140,7 +154,7 @@ func (ap *AIPredictor) Predict(ctx context.Context, req *PredictionRequest) (*AI
 	prediction.MarketID = req.MarketID
 	prediction.MarketTitle = req.MarketTitle
 	prediction.CreatedAt = time.Now()
-	prediction.ExpiresAt = time.Now().Add(24 * time.Hour)
+	prediction.ExpiresAt = time.Now().Add(ap.cache.ttl)
 
 	ap.cache.set(cacheKey, prediction)
 
@@ -154,13 +168,16 @@ func (ap *AIPredictor) buildPrompt(req *PredictionRequest) string {
 
 	sb.WriteString(fmt.Sprintf("## 市场信息\n"))
 	sb.WriteString(fmt.Sprintf("市场标题：%s\n", req.MarketTitle))
-	sb.WriteString(fmt.Sprintf("市场 ID: %s\n\n", req.MarketID))
+	sb.WriteString(fmt.Sprintf("市场 ID: %s\n", req.MarketID))
+	if req.MarketDescription != "" {
+		sb.WriteString(fmt.Sprintf("市场规则/描述：%s\n", req.MarketDescription))
+	}
+	sb.WriteString("\n")
 
 	if req.MarketData != nil {
-		sb.WriteString("## 当前市场数据\n")
-		sb.WriteString(fmt.Sprintf("当前价格：%.2f cents\n", req.MarketData.CurrentPrice))
-		sb.WriteString(fmt.Sprintf("YES 价格：%.2f cents (隐含概率：%.2f%%)\n", req.MarketData.YesPrice, req.MarketData.YesPrice))
-		sb.WriteString(fmt.Sprintf("NO 价格：%.2f cents (隐含概率：%.2f%%)\n", req.MarketData.NoPrice, req.MarketData.NoPrice))
+		sb.WriteString("## 当前市场数据（价格均为 0-1 的概率）\n")
+		sb.WriteString(fmt.Sprintf("当前 YES 价格：%.4f（隐含概率 %.2f%%）\n", req.MarketData.CurrentPrice, req.MarketData.CurrentPrice*100))
+		sb.WriteString(fmt.Sprintf("YES 买价：%.4f；YES 卖价：%.4f\n", req.MarketData.YesPrice, req.MarketData.NoPrice))
 		sb.WriteString(fmt.Sprintf("24 小时交易量：$%.2f\n", req.MarketData.Volume24h))
 		sb.WriteString(fmt.Sprintf("持仓量：$%.2f\n", req.MarketData.OpenInterest))
 		sb.WriteString(fmt.Sprintf("流动性：$%.2f\n", req.MarketData.Liquidity))
@@ -170,12 +187,12 @@ func (ap *AIPredictor) buildPrompt(req *PredictionRequest) string {
 	}
 
 	if req.HistoricalData != nil && len(req.HistoricalData.PriceHistory) > 0 {
-		sb.WriteString("## 历史价格数据\n")
+		sb.WriteString("## 历史价格数据（0-1 概率）\n")
 		for i, point := range req.HistoricalData.PriceHistory {
 			if i >= 10 {
 				break
 			}
-			sb.WriteString(fmt.Sprintf("- %s: %.2f cents\n", point.Timestamp.Format("2006-01-02"), point.Price))
+			sb.WriteString(fmt.Sprintf("- %s: %.4f\n", point.Timestamp.Format("2006-01-02"), point.Price))
 		}
 		sb.WriteString("\n")
 	}
@@ -190,20 +207,18 @@ func (ap *AIPredictor) buildPrompt(req *PredictionRequest) string {
 	}
 
 	sb.WriteString("## 分析要求\n\n")
-	sb.WriteString("请提供以下分析：\n")
-	sb.WriteString("1. **预测结果**: YES 或 NO\n")
-	sb.WriteString("2. **概率评估**: 0-100% 的概率值\n")
-	sb.WriteString("3. **置信度**: 对预测的置信程度 (0-100%)\n")
-	sb.WriteString("4. **推理过程**: 详细的分析逻辑\n")
-	sb.WriteString("5. **关键因素**: 影响结果的 3-5 个关键因素\n")
-	sb.WriteString("6. **风险评估**: 潜在风险点\n")
-	sb.WriteString("7. **替代情景**: 其他可能的情景及其概率\n\n")
+	sb.WriteString("1. 先给出该事件的基准概率（base rate），再结合当前信息更新。\n")
+	sb.WriteString("2. 不要把当前市场价格直接当作真值；市场价只是一个可比较的锚点。\n")
+	sb.WriteString("3. 明确说明哪些信息是你不知道的，避免编造新闻或数据。\n")
+	sb.WriteString("4. 给出 P(YES)，即 YES 结果发生的概率（0-1 小数）。\n")
+	sb.WriteString("5. 给出置信度（0-1 小数），以及到期前可能改变结论的关键事件。\n")
+	sb.WriteString("6. 如果信息不足，yes_probability 应接近市场隐含概率，confidence 应较低。\n\n")
 
 	sb.WriteString("## 输出格式\n")
-	sb.WriteString("请严格按照以下 JSON 格式输出（不要包含 markdown 代码块标记）：\n")
+	sb.WriteString("只输出一个 JSON 对象，不要包含 markdown 代码块标记：\n")
 	sb.WriteString("{\n")
 	sb.WriteString("  \"prediction\": \"YES 或 NO\",\n")
-	sb.WriteString("  \"probability\": 0.00,\n")
+	sb.WriteString("  \"yes_probability\": 0.00,\n")
 	sb.WriteString("  \"confidence\": 0.00,\n")
 	sb.WriteString("  \"reasoning\": \"详细推理\",\n")
 	sb.WriteString("  \"key_factors\": [\"因素 1\", \"因素 2\", \"因素 3\"],\n")
@@ -219,78 +234,76 @@ func (ap *AIPredictor) buildPrompt(req *PredictionRequest) string {
 
 func (ap *AIPredictor) parsePrediction(response string, req *PredictionRequest) (*AIPrediction, error) {
 	response = strings.TrimSpace(response)
-
-	response = strings.TrimPrefix(response, "```json")
-	response = strings.TrimSuffix(response, "```")
-	response = strings.TrimSpace(response)
+	if start := strings.Index(response, "{"); start >= 0 {
+		if end := strings.LastIndex(response, "}"); end > start {
+			response = response[start : end+1]
+		}
+	}
 
 	var result struct {
-		Prediction         string             `json:"prediction"`
-		Probability        float64            `json:"probability"`
-		Confidence         float64            `json:"confidence"`
-		Reasoning          string             `json:"reasoning"`
-		KeyFactors         []string           `json:"key_factors"`
-		RiskAssessment     string             `json:"risk_assessment"`
-		TimeHorizon        string             `json:"time_horizon"`
+		Prediction           string                `json:"prediction"`
+		Probability          *float64              `json:"probability"`
+		YesProbability       *float64              `json:"yes_probability"`
+		Confidence           float64               `json:"confidence"`
+		Reasoning            string                `json:"reasoning"`
+		KeyFactors           []string              `json:"key_factors"`
+		RiskAssessment       string                `json:"risk_assessment"`
+		TimeHorizon          string                `json:"time_horizon"`
 		AlternativeScenarios []AlternativeScenario `json:"alternative_scenarios"`
 	}
-
 	if err := json.Unmarshal([]byte(response), &result); err != nil {
-		return ap.parseFallback(response, req)
+		return nil, fmt.Errorf("model response is not valid JSON: %w", err)
 	}
 
-	if result.Probability < 0 || result.Probability > 1 {
-		result.Probability /= 100
-	}
-	if result.Confidence < 0 || result.Confidence > 1 {
-		result.Confidence /= 100
+	var probability float64
+	switch {
+	case result.YesProbability != nil:
+		probability = *result.YesProbability
+	case result.Probability != nil:
+		probability = *result.Probability
+	default:
+		return nil, fmt.Errorf("model response is missing yes_probability")
 	}
 
-	return &AIPrediction{
-		Prediction:         strings.ToUpper(result.Prediction),
-		Probability:        result.Probability,
-		Confidence:         result.Confidence,
-		Reasoning:          result.Reasoning,
-		KeyFactors:         result.KeyFactors,
-		RiskAssessment:     result.RiskAssessment,
-		TimeHorizon:        result.TimeHorizon,
-		AlternativeScenarios: result.AlternativeScenarios,
-	}, nil
-}
+	// Accept percentages for compatibility, then enforce [0,1].
+	if probability < 0 || probability > 1 {
+		probability /= 100
+	}
+	if probability < 0 || probability > 1 {
+		return nil, fmt.Errorf("yes_probability %v is outside [0,1]", probability)
+	}
+	probability = clampProbability(probability)
 
-func (ap *AIPredictor) parseFallback(response string, req *PredictionRequest) (*AIPrediction, error) {
+	confidence := result.Confidence
+	if confidence < 0 || confidence > 1 {
+		confidence /= 100
+	}
+	if confidence < 0 || confidence > 1 {
+		confidence = 0
+	}
+
+	// The numeric P(YES) is authoritative because it is what sizing and edge
+	// calculations consume. The textual prediction is derived from it to avoid
+	// inverted bets when an LLM labels probabilities inconsistently.
 	prediction := "YES"
-	probability := 0.6
-	confidence := 0.5
-	reasoning := response
-
-	if strings.Contains(strings.ToLower(response), "no") {
-		if strings.Contains(strings.ToLower(response), "probably no") ||
-			strings.Contains(strings.ToLower(response), "bet on no") {
-			prediction = "NO"
-			probability = 0.4
-		}
+	if probability < 0.5 {
+		prediction = "NO"
 	}
 
-	keywords := []string{"因为", "由于", "基于", "considering", "because", "given"}
-	for _, keyword := range keywords {
-		if idx := strings.Index(response, keyword); idx > 0 {
-			reasoning = response[idx:]
-			break
-		}
+	reasoning := result.Reasoning
+	if !strings.EqualFold(strings.TrimSpace(result.Prediction), prediction) && result.Prediction != "" {
+		reasoning = fmt.Sprintf("%s (model label %q was overridden by yes_probability=%.4f)", reasoning, result.Prediction, probability)
 	}
 
 	return &AIPrediction{
-		Prediction:     prediction,
-		Probability:    probability,
-		Confidence:     confidence,
-		Reasoning:      reasoning,
-		KeyFactors:     []string{"AI 分析"},
-		RiskAssessment: "基于文本分析的初步评估",
-		TimeHorizon:    "短期",
-		AlternativeScenarios: []AlternativeScenario{
-			{"相反结果", 1 - probability, "中等"},
-		},
+		Prediction:           prediction,
+		Probability:          probability,
+		Confidence:           confidence,
+		Reasoning:            reasoning,
+		KeyFactors:           result.KeyFactors,
+		RiskAssessment:       result.RiskAssessment,
+		TimeHorizon:          result.TimeHorizon,
+		AlternativeScenarios: result.AlternativeScenarios,
 	}, nil
 }
 
@@ -317,34 +330,52 @@ func (ap *AIPredictor) ClearCache() {
 }
 
 func (ap *AIPredictor) CompareWithMarket(prediction *AIPrediction, marketPrice float64) *ValueAssessment {
-	impliedProb := marketPrice / 100.0
-	aiProb := prediction.Probability
+	if prediction == nil {
+		return &ValueAssessment{Recommendation: "HOLD", ConfidenceLevel: "LOW"}
+	}
+	// marketPrice is a decimal probability in [0,1] (Polymarket quotes 0.58,
+	// not 58 cents). Do not divide by 100 here.
+	if marketPrice <= 0 || marketPrice >= 1 {
+		return &ValueAssessment{
+			MarketID:          prediction.MarketID,
+			AIPrediction:      prediction.Prediction,
+			AIProbability:     prediction.Probability,
+			MarketImpliedProb: marketPrice,
+			Recommendation:    "HOLD",
+			ConfidenceLevel:   "LOW",
+		}
+	}
 
+	aiProb := clampProbability(prediction.Probability)
+	impliedProb := clampProbability(marketPrice)
 	edge := aiProb - impliedProb
-	edgePercent := (edge / impliedProb) * 100
+	edgePercent := 0.0
+	if impliedProb > 0 {
+		edgePercent = edge / impliedProb * 100
+	}
 
 	assessment := &ValueAssessment{
-		MarketID:         prediction.MarketID,
-		AIPrediction:     prediction.Prediction,
-		AIProbability:    aiProb,
+		MarketID:          prediction.MarketID,
+		AIPrediction:      prediction.Prediction,
+		AIProbability:     aiProb,
 		MarketImpliedProb: impliedProb,
-		Edge:             edge,
-		EdgePercent:      edgePercent,
-		Recommendation:   "HOLD",
-		ConfidenceLevel:  "LOW",
+		Edge:              edge,
+		EdgePercent:       edgePercent,
+		Recommendation:    "HOLD",
+		ConfidenceLevel:   "LOW",
 	}
 
 	if edge > 0.1 {
-		assessment.Recommendation = "STRONG_BUY"
+		assessment.Recommendation = "STRONG_BUY_YES"
 		assessment.ConfidenceLevel = "HIGH"
 	} else if edge > 0.05 {
-		assessment.Recommendation = "BUY"
+		assessment.Recommendation = "BUY_YES"
 		assessment.ConfidenceLevel = "MEDIUM"
 	} else if edge < -0.1 {
-		assessment.Recommendation = "STRONG_SELL"
+		assessment.Recommendation = "STRONG_BUY_NO"
 		assessment.ConfidenceLevel = "HIGH"
 	} else if edge < -0.05 {
-		assessment.Recommendation = "SELL"
+		assessment.Recommendation = "BUY_NO"
 		assessment.ConfidenceLevel = "MEDIUM"
 	}
 
