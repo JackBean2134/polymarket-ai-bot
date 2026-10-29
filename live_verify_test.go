@@ -1,0 +1,202 @@
+package polymarket
+
+import (
+	"os"
+	"path/filepath"
+	"strings"
+	"testing"
+)
+
+func writeStopFile(path string) error {
+	return os.WriteFile(path, []byte("stop\n"), 0600)
+}
+
+const testSignerKey = "0xac0974bec39a17e36ba4a6b4d238ff944bacb478cbed5efcae784d7bf4f2ff80"
+
+func verifyTestConfig(t *testing.T) *Config {
+	t.Helper()
+	config := DefaultConfig()
+	config.Trading.StopFile = filepath.Join(t.TempDir(), "STOP")
+	return config
+}
+
+func findCheck(checks []VerifyCheck, name string) (VerifyCheck, bool) {
+	for _, check := range checks {
+		if check.Name == name {
+			return check, true
+		}
+	}
+	return VerifyCheck{}, false
+}
+
+func TestVerifyConfigGatesReportDisabledLive(t *testing.T) {
+	config := verifyTestConfig(t)
+	checks := verifyConfigGates(config, false, "token-1")
+
+	for _, name := range []string{"live_switch", "allow_live_config", "allow_live_env", "token_whitelist"} {
+		check, ok := findCheck(checks, name)
+		if !ok {
+			t.Fatalf("missing check %q", name)
+		}
+		if check.Status != VerifyWarn {
+			t.Fatalf("%s should warn while live is disabled, got %s (%s)", name, check.Status, check.Detail)
+		}
+	}
+	stop, _ := findCheck(checks, "stop_file")
+	if stop.Status != VerifyPass {
+		t.Fatalf("missing STOP file should pass, got %s", stop.Status)
+	}
+}
+
+func TestVerifyConfigGatesFailOnWhitelistMismatchAndStopFile(t *testing.T) {
+	config := verifyTestConfig(t)
+	config.Trading.AllowedTokens = []string{"other-token"}
+	checks := verifyConfigGates(config, true, "token-1")
+	whitelist, _ := findCheck(checks, "token_whitelist")
+	if whitelist.Status != VerifyFail {
+		t.Fatalf("expected a whitelist failure, got %s", whitelist.Status)
+	}
+
+	config = verifyTestConfig(t)
+	if err := writeStopFile(config.Trading.StopFile); err != nil {
+		t.Fatalf("write stop file: %v", err)
+	}
+	checks = verifyConfigGates(config, true, "token-1")
+	stop, _ := findCheck(checks, "stop_file")
+	if stop.Status != VerifyFail {
+		t.Fatalf("expected the kill switch to fail, got %s", stop.Status)
+	}
+}
+
+func TestVerifyConfigGatesPassWhenFullyEnabled(t *testing.T) {
+	config := verifyTestConfig(t)
+	config.Trading.Mode = "live"
+	config.Trading.Enabled = true
+	config.Trading.AllowLive = true
+	config.Trading.AllowedTokens = []string{"token-1"}
+
+	checks := verifyConfigGates(config, true, "token-1")
+	for _, check := range checks {
+		if check.Status != VerifyPass {
+			t.Fatalf("%s should pass, got %s (%s)", check.Name, check.Status, check.Detail)
+		}
+	}
+}
+
+func TestVerifyIdentityWalletModel(t *testing.T) {
+	signer, err := NewOrderSigner(OrderSignerConfig{PrivateKeyHex: testSignerKey, ChainID: ChainPolygon})
+	if err != nil {
+		t.Fatalf("new signer: %v", err)
+	}
+
+	config := verifyTestConfig(t)
+	config.Polymarket.WalletAddress = signer.Address()
+	client := NewClient(ClientConfig{
+		APIKey: "key", APISecret: "c2VjcmV0", Passphrase: "pass", WalletAddress: signer.Address(),
+	})
+
+	checks := verifyIdentity(config, client, signer)
+	for _, name := range []string{"credentials.private_key", "signer.poly_address", "wallet.model"} {
+		check, ok := findCheck(checks, name)
+		if !ok || check.Status != VerifyPass {
+			t.Fatalf("%s should pass, got %+v", name, check)
+		}
+	}
+	if l2 := verifyL2Credentials(client); l2.Status != VerifyPass {
+		t.Fatalf("complete credentials should pass, got %+v", l2)
+	}
+
+	config.Polymarket.WalletAddress = "0x0000000000000000000000000000000000000001"
+	checks = verifyIdentity(config, client, signer)
+	if mismatch, _ := findCheck(checks, "signer.poly_address"); mismatch.Status != VerifyFail {
+		t.Fatalf("expected a signer mismatch failure, got %s", mismatch.Status)
+	}
+
+	config.Polymarket.WalletAddress = signer.Address()
+	config.Polymarket.SignatureType = 1
+	checks = verifyIdentity(config, client, signer)
+	if model, _ := findCheck(checks, "wallet.model"); model.Status != VerifyFail {
+		t.Fatalf("proxy signature type without a funder must fail, got %s", model.Status)
+	}
+
+	noCreds := NewClient(ClientConfig{})
+	if l2 := verifyL2Credentials(noCreds); l2.Status != VerifyFail {
+		t.Fatalf("missing L2 credentials must fail, got %+v", l2)
+	}
+}
+
+func TestFeeChecksUseScheduleNotLegacyBaseFee(t *testing.T) {
+	market := &Market{FeeRateKnown: true, FeeRate: 0.05, FeeExponent: 1, TakerBaseFee: 1000}
+	check := feeCheck(market, 100, 0.5)
+	if check.Status != VerifyPass || !strings.Contains(check.Detail, "1.2500") {
+		t.Fatalf("unexpected fee check: %+v", check)
+	}
+
+	legacy := feeLegacyCheck(market, 100, 0.5)
+	if legacy.Status != VerifyWarn {
+		t.Fatalf("legacy base fee should warn, got %+v", legacy)
+	}
+
+	unknown := &Market{TakerBaseFee: 1000}
+	if got := feeCheck(unknown, 100, 0.5); got.Status != VerifyFail {
+		t.Fatalf("unknown schedule must fail, got %+v", got)
+	}
+	free := &Market{FeeRateKnown: true, FeeRate: 0}
+	if got := feeCheck(free, 100, 0.5); got.Status != VerifyPass || !strings.Contains(got.Detail, "0.0000") {
+		t.Fatalf("fee-free market must pass with zero fee, got %+v", got)
+	}
+}
+
+func TestLiveVerifyReportReadiness(t *testing.T) {
+	report := &LiveVerifyReport{Checks: []VerifyCheck{
+		{Group: "config", Name: "stop_file", Status: VerifyPass},
+		{Group: "market", Name: "market.tradable", Status: VerifyPass},
+	}}
+	report.finish()
+	if !report.Ready || !report.ConfigReady || !report.MarketReady {
+		t.Fatalf("expected a ready report, got %+v", report)
+	}
+
+	report = &LiveVerifyReport{Checks: []VerifyCheck{
+		{Group: "config", Name: "token_whitelist", Status: VerifyWarn, Detail: "empty"},
+		{Group: "market", Name: "market.tradable", Status: VerifyPass},
+	}}
+	report.finish()
+	if report.Ready || report.ConfigReady {
+		t.Fatalf("warnings must block readiness: %+v", report)
+	}
+	if len(report.Warnings) != 1 {
+		t.Fatalf("expected one warning, got %v", report.Warnings)
+	}
+
+	report = &LiveVerifyReport{Checks: []VerifyCheck{
+		{Group: "market", Name: "book.depth", Status: VerifyFail, Detail: "thin"},
+	}}
+	report.finish()
+	if report.Ready || report.MarketReady {
+		t.Fatalf("market failures must block readiness: %+v", report)
+	}
+	if len(report.Blockers) != 1 {
+		t.Fatalf("expected one blocker, got %v", report.Blockers)
+	}
+}
+
+func TestCumulativeSizeAtLimitAndBestBid(t *testing.T) {
+	book := &OrderBook{
+		Asks: []Order{{Price: 0.40, Size: 30}, {Price: 0.42, Size: 50}, {Price: 0.50, Size: 100}},
+		Bids: []Order{{Price: 0.30, Size: 10}, {Price: 0.38, Size: 25}},
+	}
+	if got := cumulativeSizeAtLimit(book, "BUY", 0.42); got != 80 {
+		t.Fatalf("expected 80 shares at or below 0.42, got %f", got)
+	}
+	if got := cumulativeSizeAtLimit(book, "SELL", 0.30); got != 35 {
+		t.Fatalf("expected 35 shares at or above 0.30, got %f", got)
+	}
+	if got := cumulativeSizeAtLimit(book, "BUY", 0); got != 0 {
+		t.Fatalf("invalid limit must return 0, got %f", got)
+	}
+	price, _, ok := bestBid(book)
+	if !ok || price != 0.38 {
+		t.Fatalf("unexpected best bid: %f %v", price, ok)
+	}
+}

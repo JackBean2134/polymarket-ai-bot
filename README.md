@@ -211,6 +211,10 @@ The API packages read Gamma, CLOB order books/prices/history, and Data API posit
 ### Live order path (off by default)
 
 ```powershell
+# Read-only pre-flight: config, credentials, wallet model, market, fees,
+# book depth and signability. Never posts an order.
+go run ./cmd -live-verify <TOKEN_ID> -live-shares 5 -live-max-usd 5
+
 # Dry-run: sign and print the order without sending it
 go run ./cmd -live-order <TOKEN_ID> -live-shares 5 -live-price 0.10 -live-max-usd 5
 
@@ -225,6 +229,8 @@ go run ./cmd -live-order <TOKEN_ID> -live-shares 5 -live-price 0.10 -live-max-us
 ```
 
 Sending also requires `trading.mode=live`, `trading.enabled=true`, `trading.allow_live=true`, `POLYMARKET_ALLOW_LIVE=1`, a non-empty `trading.allowed_tokens` whitelist containing the token, an absent STOP file, `-live-confirm=I_UNDERSTAND`, a hard per-order cap of at most $25, and a two-second abort window. Do not use a wallet with funds until you have read [LIVE_TRADING.md](LIVE_TRADING.md) and verified allowances/funder/signature type.
+
+`-live-verify` is the safe first step: it prints one `pass` / `warn` / `fail` / `skip` row per check plus `config_ready`, `market_ready` and `ready_for_small_live_test`. Signing and wallet-model checks are skipped when no private key is set, so it works before you hand over any credential. The allowance check is always `skip`: it needs an RPC call this repository does not make.
 
 The unattended path has the article's safety gates: `STOP` file kill switch, token whitelist, single-order cap, daily-loss/drawdown halts, heartbeat file for `-arb-scan -arb-interval`, and a `-live-cancel` command.
 

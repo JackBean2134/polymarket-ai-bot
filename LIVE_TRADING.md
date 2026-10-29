@@ -15,7 +15,17 @@
 - Hard per-order USD cap, FAK default, 2-second abort window, no resting GTC left after reconciliation.
 - Book-walking paper fills with VWAP and partial fills.
 
-## 2. What is NOT verified / not implemented
+## 2. Pre-flight: `-live-verify`
+
+```powershell
+go run ./cmd -live-verify <TOKEN_ID> -live-shares 5 -live-max-usd 5
+```
+
+Read-only. Prints one `pass` / `warn` / `fail` / `skip` row for the kill switch, live switches, token whitelist, L2 credentials, signer/POLY_ADDRESS match, wallet model, market tradability, minimum order, tick alignment, `feeSchedule`, the legacy `takerBaseFee` mismatch, book depth and signability, then summarises with `config_ready`, `market_ready` and `ready_for_small_live_test`.
+
+It signs locally to prove the order is buildable but never posts. The allowance check is always `skip`: it needs an RPC call this repository does not make, and the exchange will reject the order if approvals are missing.
+
+## 3. What is NOT verified / not implemented
 
 - A real authenticated POST with your credentials. Only the dry-run signature and public endpoints have been exercised in this environment.
 - Exact fill VWAP per trade. The live executor uses the limit price (or order price) conservatively; reconcile trades in the UI/API for accounting.
@@ -24,7 +34,7 @@
 - Multi-order/basket execution. The arbitrage scanner is measurement-only.
 - Fee schedules are resolved through Gamma's `clob_token_ids` filter. If that lookup fails (network, or a market with neither `feeSchedule` nor `feesEnabled`), live execution fails closed; it never falls back to treating `takerBaseFee` as a rate.
 
-## 3. Wallet model
+## 4. Wallet model
 
 Polymarket has three signature types:
 
@@ -49,7 +59,7 @@ $env:POLYMARKET_CHAIN_ID = '137'
 - If you normally trade through the Polymarket UI, your funds are often in a proxy wallet; do not guess. Check the UI/API and use the correct funder + signature type.
 - The EOA needs USDC approval to the appropriate exchange contract. Approvals are an on-chain action; this repository does not submit them.
 
-## 4. API credentials (L2)
+## 5. API credentials (L2)
 
 Set all of:
 
@@ -81,7 +91,7 @@ Config must also allow the live path:
 
 The triple switch is: `trading.mode=live` + `trading.allow_live=true` + `POLYMARKET_ALLOW_LIVE=1`, with `trading.enabled=true` as the master switch. A non-empty token whitelist is mandatory; an absent STOP file is required for every new order. The automatic bot loop still refuses live mode; only the explicit `-live-order` command uses this path.
 
-## 5. Step 1: dry-run
+## 6. Step 1: dry-run
 
 ```powershell
 go run ./cmd -live-order <TOKEN_ID> `
@@ -101,7 +111,7 @@ This fetches tick size, negRisk and fee rate, builds the EIP-712 order, and prin
 
 Compare `maker`/`signer`/`taker`/amounts with what you expect. A 5-share BUY at 0.10 should be `makerAmount=500000`, `takerAmount=5000000`, i.e. $0.50 for 5 shares.
 
-## 6. Step 2: send a tiny order
+## 7. Step 2: send a tiny order
 
 ```powershell
 go run ./cmd -live-order <TOKEN_ID> `
@@ -127,7 +137,7 @@ Guards:
 - FAK by default; if a GTC order is still live after 8 seconds it is cancelled
 - if the exchange reports a match but no matched size, the executor refuses to invent a fill
 
-## 7. Cancellation
+## 8. Cancellation
 
 ```powershell
 go run ./cmd -live-cancel <ORDER_ID>
@@ -135,7 +145,7 @@ go run ./cmd -live-cancel <ORDER_ID>
 
 This uses the L2 credentials and `DELETE /order`. The live executor also cancels a resting GTC order automatically after its 8-second reconciliation window. Always check the UI/order endpoint to confirm the order is gone.
 
-## 8. Common failures
+## 9. Common failures
 
 | Symptom | Likely cause |
 |---|---|
@@ -146,7 +156,7 @@ This uses the L2 credentials and `DELETE /order`. The live executor also cancels
 | order rejected / insufficient balance | Missing USDC or CTF allowance, or wrong funder |
 | fill unknown | Exchange response/reconciliation did not expose matched size; do not assume a fill |
 
-## 9. Do not
+## 10. Do not
 
 - Do not commit the private key or API secret.
 - Do not use a wallet with meaningful funds for the first test.
@@ -155,7 +165,7 @@ This uses the L2 credentials and `DELETE /order`. The live executor also cancels
 - Do not treat the arbitrage scanner output as executable liquidity; books move.
 - Do not leave GTC orders resting while you debug; cancel them in the UI.
 
-## 10. Kill switch and heartbeat
+## 11. Kill switch and heartbeat
 
 Create a file named `STOP` (or whatever `trading.stop_file` points to) to make the next live order and the next `-arb-scan` round fail closed. Delete it only after you have inspected the state.
 

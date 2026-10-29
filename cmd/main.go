@@ -65,6 +65,7 @@ type cliOptions struct {
 	autopilotCooldown int
 	autopilotOut      string
 	liveToken         string
+	liveVerify        string
 	liveSide          string
 	liveShares        float64
 	livePrice         float64
@@ -136,6 +137,7 @@ func main() {
 	flag.StringVar(&options.autopilotOut, "autopilot-out", "", "Append autopilot decisions as JSONL to this file")
 	flag.StringVar(&options.autopilotReport, "autopilot-report", "", "Summarise an -autopilot-out JSONL file offline")
 	flag.StringVar(&options.liveToken, "live-order", "", "Token ID for a live order (requires explicit confirmation)")
+	flag.StringVar(&options.liveVerify, "live-verify", "", "Run read-only pre-flight checks for a token (never sends an order)")
 	flag.StringVar(&options.liveSide, "live-side", "BUY", "Live order side: BUY or SELL")
 	flag.Float64Var(&options.liveShares, "live-shares", 0, "Live order size in conditional token shares")
 	flag.Float64Var(&options.livePrice, "live-price", 0, "Live order limit price (decimal, e.g. 0.10)")
@@ -214,7 +216,7 @@ func run(options cliOptions) error {
 		options.showStatus, options.showMetrics, options.showPositions,
 		options.pauseTrading, options.resumeTrading,
 		options.listMarkets > 0, options.marketID != "", options.wallet != "",
-		options.arbScan > 0, options.autopilotCycles > 0, options.liveToken != "", options.liveCancel != "",
+		options.arbScan > 0, options.autopilotCycles > 0, options.liveToken != "", options.liveVerify != "", options.liveCancel != "",
 		options.collectResolved > 0,
 	} {
 		if selected {
@@ -222,7 +224,7 @@ func run(options cliOptions) error {
 		}
 	}
 	if selectedCommands > 1 {
-		return errors.New("choose only one status, metrics, positions, pause, resume, markets, market, wallet, arb-scan, autopilot, live-order, live-cancel, or collect-resolved command")
+		return errors.New("choose only one status, metrics, positions, pause, resume, markets, market, wallet, arb-scan, autopilot, live-order, live-verify, live-cancel, or collect-resolved command")
 	}
 
 	config, err := loadConfig(options.configPath)
@@ -251,6 +253,8 @@ func run(options cliOptions) error {
 		return runAutopilot(config, options)
 	case options.liveToken != "":
 		return runLiveOrder(config, options)
+	case options.liveVerify != "":
+		return runLiveVerify(config, options)
 	case options.liveCancel != "":
 		return runLiveCancel(config, options.liveCancel)
 	case options.collectResolved > 0:
@@ -650,6 +654,72 @@ func appendJSONL(path string, value interface{}) error {
 		return fmt.Errorf("write %s: %w", path, err)
 	}
 	return nil
+}
+
+func runLiveVerify(config *polymarket.Config, options cliOptions) error {
+	token := strings.TrimSpace(options.liveVerify)
+	if token == "" {
+		return fmt.Errorf("-live-verify requires a token ID")
+	}
+	shares := options.liveShares
+	if shares <= 0 {
+		shares = 5
+	}
+	maxUSD := options.liveMaxUSD
+	if maxUSD <= 0 {
+		maxUSD = 5
+	}
+	const hardCapUSD = 25.0
+	if maxUSD > hardCapUSD {
+		return fmt.Errorf("live-max-usd must not exceed the hard cap of %.0f", hardCapUSD)
+	}
+	if options.livePrice < 0 || options.livePrice >= 1 {
+		return fmt.Errorf("live-price must be a decimal in (0,1) or 0 to use the best quote")
+	}
+	side := strings.ToUpper(strings.TrimSpace(options.liveSide))
+	if side == "" {
+		side = "BUY"
+	}
+
+	ctx, cancel := context.WithTimeout(context.Background(), 45*time.Second)
+	defer cancel()
+
+	client := newClient(config)
+	var signer *polymarket.OrderSigner
+	if strings.TrimSpace(config.Polymarket.PrivateKey) != "" {
+		s, err := polymarket.NewOrderSigner(polymarket.OrderSignerConfig{
+			PrivateKeyHex: config.Polymarket.PrivateKey,
+			ChainID:       config.Polymarket.ChainID,
+			FunderAddress: config.Polymarket.FunderAddress,
+			SignatureType: config.Polymarket.SignatureType,
+		})
+		if err != nil {
+			return err
+		}
+		signer = s
+	}
+
+	envLive := strings.EqualFold(strings.TrimSpace(os.Getenv("POLYMARKET_ALLOW_LIVE")), "1") ||
+		strings.EqualFold(strings.TrimSpace(os.Getenv("POLYMARKET_ALLOW_LIVE")), "true")
+
+	report, err := polymarket.VerifyLiveOrder(ctx, polymarket.LiveVerifyDeps{
+		Config:  config,
+		Client:  client,
+		CLOB:    polymarket.NewCLOBService(client),
+		Gamma:   polymarket.NewGammaService(client),
+		Signer:  signer,
+		EnvLive: envLive,
+	}, polymarket.OrderRequest{
+		TokenID:    token,
+		Side:       side,
+		Shares:     shares,
+		LimitPrice: options.livePrice,
+		MaxCashUSD: maxUSD,
+	})
+	if err != nil {
+		return err
+	}
+	return prettyPrint(report)
 }
 
 func runLiveOrder(config *polymarket.Config, options cliOptions) error {
