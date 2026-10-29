@@ -9,7 +9,8 @@
 - Official amount rounding based on the market tick size (`0.1 / 0.01 / 0.001 / 0.0001`).
 - Official test vector reproduced byte-for-byte (see `order_signing_test.go`).
 - CLOB L2 HMAC headers (`POLY_ADDRESS`, `POLY_SIGNATURE`, `POLY_TIMESTAMP`, `POLY_API_KEY`, `POLY_PASSPHRASE`).
-- Tick size, negRisk flag and fee rate fetched per token before signing.
+- Tick size, negRisk flag and the legacy `feeRateBps` fetched per token before signing.
+- Protocol fee estimation from the market's Gamma `feeSchedule`: `fee = shares × rate × p × (1-p)`. The executor sizes and reports against that number, and refuses to trade when the schedule cannot be resolved instead of guessing from `takerBaseFee`.
 - `POST /order`, order polling via `/data/order/{id}`, and cancel via `DELETE /order`.
 - Hard per-order USD cap, FAK default, 2-second abort window, no resting GTC left after reconciliation.
 - Book-walking paper fills with VWAP and partial fills.
@@ -21,6 +22,7 @@
 - On-chain balance/allowance checks. The exchange will reject the order if USDC/CTF approvals are missing.
 - Persistent order/position ledger, stop-loss, automatic cancellation outside the reconciliation window, WebSocket user feeds.
 - Multi-order/basket execution. The arbitrage scanner is measurement-only.
+- Fee schedules are resolved through Gamma's `clob_token_ids` filter. If that lookup fails (network, or a market with neither `feeSchedule` nor `feesEnabled`), live execution fails closed; it never falls back to treating `takerBaseFee` as a rate.
 
 ## 3. Wallet model
 

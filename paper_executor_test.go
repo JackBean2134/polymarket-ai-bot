@@ -86,3 +86,31 @@ func TestPaperExecutorPartialFill(t *testing.T) {
 		t.Fatalf("expected -$10 cash, got %f", fill.CashUSD)
 	}
 }
+
+func TestPaperExecutorUsesScheduleFee(t *testing.T) {
+	executor := NewPaperExecutor(staticBookProvider{
+		book: &OrderBook{Asks: []Order{{Price: 0.50, Size: 100}}},
+	}, 0)
+
+	fill, err := executor.Execute(context.Background(), OrderRequest{
+		TokenID:     "token",
+		Side:        "BUY",
+		Shares:      100,
+		LimitPrice:  0.50,
+		FeeRate:     0.05,
+		FeeExponent: 1,
+	})
+	if err != nil {
+		t.Fatalf("execute: %v", err)
+	}
+	if math.Abs(fill.NotionalUSD-50) > 1e-9 {
+		t.Fatalf("expected $50 notional, got %f", fill.NotionalUSD)
+	}
+	// 100 × 0.05 × 0.5 × 0.5 = 1.25
+	if math.Abs(fill.FeeUSD-1.25) > 1e-9 {
+		t.Fatalf("expected the protocol fee $1.25, got %f", fill.FeeUSD)
+	}
+	if math.Abs(fill.CashUSD-(-51.25)) > 1e-9 {
+		t.Fatalf("expected -$51.25 cash, got %f", fill.CashUSD)
+	}
+}

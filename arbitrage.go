@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"sort"
+	"strings"
 	"sync"
 	"time"
 )
@@ -15,13 +16,19 @@ type ArbitrageLeg struct {
 	TokenID         string  `json:"token_id"`
 	Ask             float64 `json:"ask"`
 	AvailableShares float64 `json:"available_shares"`
-	FeeBps          int     `json:"fee_bps"`
+	// FeeRate/FeeExponent come from the market's feeSchedule; FeeBps is the
+	// legacy field and is only a fallback for hand-built legs.
+	FeeRate     float64 `json:"fee_rate,omitempty"`
+	FeeExponent float64 `json:"fee_exponent,omitempty"`
+	FeeBps      int     `json:"fee_bps"`
 }
 
 type ArbitrageOpportunity struct {
 	EventID      string         `json:"event_id"`
 	EventSlug    string         `json:"event_slug"`
 	Title        string         `json:"title"`
+	Category     string         `json:"category,omitempty"`
+	Tags         []string       `json:"tags,omitempty"`
 	Kind         string         `json:"kind"`
 	Legs         []ArbitrageLeg `json:"legs"`
 	CostUSD      float64        `json:"cost_usd"`
@@ -42,6 +49,11 @@ type ArbitrageScanStats struct {
 	Opportunities     int            `json:"opportunities"`
 	Errors            int            `json:"errors"`
 	SkipReasons       map[string]int `json:"skip_reasons,omitempty"`
+	// BestBinary* describe the cheapest YES+NO basket seen, even when it was
+	// not profitable. They answer "how far from an arbitrage were we?".
+	BestBinaryCostUSD    float64 `json:"best_binary_cost_usd"`
+	BestBinaryFeeUSD     float64 `json:"best_binary_fee_usd"`
+	BestBinaryNetEdgeUSD float64 `json:"best_binary_net_edge_usd"`
 }
 
 type ArbitrageScanResult struct {
@@ -156,6 +168,11 @@ func (s *ArbitrageScanner) ScanEvents(ctx context.Context, limit int, minEdgeUSD
 		scan.Stats.MarketsScanned += item.stats.MarketsScanned
 		scan.Stats.BooksFetched += item.stats.BooksFetched
 		scan.Stats.Errors += item.stats.Errors
+		if item.stats.BestBinaryCostUSD > 0 && (scan.Stats.BestBinaryCostUSD == 0 || item.stats.BestBinaryCostUSD < scan.Stats.BestBinaryCostUSD) {
+			scan.Stats.BestBinaryCostUSD = item.stats.BestBinaryCostUSD
+			scan.Stats.BestBinaryFeeUSD = item.stats.BestBinaryFeeUSD
+			scan.Stats.BestBinaryNetEdgeUSD = item.stats.BestBinaryNetEdgeUSD
+		}
 		for reason, count := range item.stats.SkipReasons {
 			if scan.Stats.SkipReasons == nil {
 				scan.Stats.SkipReasons = make(map[string]int)
@@ -238,6 +255,11 @@ func (s *ArbitrageScanner) scanEvent(ctx context.Context, event Event, minEdgeUS
 		if feeBps < 0 {
 			feeBps = 0
 		}
+		// The real taker fee comes from the market's feeSchedule; takerBaseFee
+		// is a legacy bps field that must not be applied to notional.
+		category := eventCategory(event)
+		feeRate := MarketFeeRate(market, category)
+		feeExponent := MarketFeeExponent(market)
 		title := market.Title
 		if title == "" {
 			title = market.Question
@@ -250,6 +272,8 @@ func (s *ArbitrageScanner) scanEvent(ctx context.Context, event Event, minEdgeUS
 			TokenID:         yesToken,
 			Ask:             yesAsk,
 			AvailableShares: yesSize,
+			FeeRate:         feeRate,
+			FeeExponent:     feeExponent,
 			FeeBps:          feeBps,
 		}
 		noLeg := ArbitrageLeg{
@@ -259,10 +283,20 @@ func (s *ArbitrageScanner) scanEvent(ctx context.Context, event Event, minEdgeUS
 			TokenID:         noToken,
 			Ask:             noAsk,
 			AvailableShares: noSize,
+			FeeRate:         feeRate,
+			FeeExponent:     feeExponent,
 			FeeBps:          feeBps,
 		}
 		yesLegs = append(yesLegs, yesLeg)
 		noLegs = append(noLegs, noLeg)
+
+		basketCost := yesAsk + noAsk
+		basketFee := takerFeeForLeg(yesLeg, yesAsk, 1) + takerFeeForLeg(noLeg, noAsk, 1)
+		if stats.BestBinaryCostUSD == 0 || basketCost < stats.BestBinaryCostUSD {
+			stats.BestBinaryCostUSD = basketCost
+			stats.BestBinaryFeeUSD = basketFee
+			stats.BestBinaryNetEdgeUSD = 1 - basketCost - basketFee
+		}
 
 		if opp, ok := evaluateBasket(event, "BINARY_YES_NO", []ArbitrageLeg{yesLeg, noLeg}, 1, minEdgeUSD); ok {
 			opportunities = append(opportunities, opp)
@@ -296,7 +330,7 @@ func evaluateBasket(event Event, kind string, legs []ArbitrageLeg, payout float6
 			return ArbitrageOpportunity{}, false
 		}
 		cost += leg.Ask
-		fee += leg.Ask * float64(leg.FeeBps) / 10000
+		fee += takerFeeForLeg(leg, leg.Ask, 1)
 		if i == 0 || leg.AvailableShares < maxBaskets {
 			maxBaskets = leg.AvailableShares
 		}
@@ -310,6 +344,8 @@ func evaluateBasket(event Event, kind string, legs []ArbitrageLeg, payout float6
 		EventID:      event.ID,
 		EventSlug:    event.Slug,
 		Title:        event.Title,
+		Category:     eventCategory(event),
+		Tags:         eventTagLabels(event),
 		Kind:         kind,
 		Legs:         legs,
 		CostUSD:      cost,
@@ -338,4 +374,89 @@ func bestAsk(book *OrderBook) (price, size float64, ok bool) {
 		}
 	}
 	return price, size, ok
+}
+
+// takerFeeForLeg charges the protocol fee when a schedule rate is present and
+// only falls back to the legacy bps-on-notional model otherwise.
+func takerFeeForLeg(leg ArbitrageLeg, price, shares float64) float64 {
+	if leg.FeeRate > 0 {
+		return TakerFeeUSD(price, shares, leg.FeeRate, leg.FeeExponent)
+	}
+	if leg.FeeBps > 0 {
+		return price * shares * float64(leg.FeeBps) / 10000
+	}
+	return 0
+}
+
+// canonicalEventCategories is a fixed priority list. Polymarket's events list
+// exposes tags but often no category, and tags are ordered by specificity
+// ("Esports|Games|Sports"). Without a canonical bucket, grouping would shatter
+// into dozens of near-duplicate labels.
+var canonicalEventCategories = []struct {
+	Label string
+	Slug  string
+}{
+	{"Sports", "sports"},
+	{"Politics", "politics"},
+	{"Elections", "elections"},
+	{"Crypto", "crypto"},
+	{"Economy", "economy"},
+	{"Geopolitics", "geopolitics"},
+	{"World", "world"},
+	{"Culture", "culture"},
+	{"Tech", "tech"},
+	{"Business", "business"},
+	{"Science", "science"},
+	{"Health", "health"},
+	{"Climate", "climate"},
+	{"Weather", "weather"},
+}
+
+// eventCategory resolves a grouping label for reporting: Gamma's category
+// when present, otherwise the highest-priority canonical tag, otherwise the
+// first tag, otherwise "uncategorized".
+func eventCategory(event Event) string {
+	if category := strings.TrimSpace(event.Category); category != "" {
+		return category
+	}
+	labels := eventTagLabels(event)
+	if len(labels) == 0 {
+		return "uncategorized"
+	}
+	for _, canonical := range canonicalEventCategories {
+		for _, label := range labels {
+			if strings.EqualFold(label, canonical.Label) || strings.EqualFold(label, canonical.Slug) {
+				return canonical.Label
+			}
+		}
+	}
+	return labels[0]
+}
+
+// eventTagLabels returns deduplicated, non-empty tag labels (or slugs).
+func eventTagLabels(event Event) []string {
+	if len(event.Tags) == 0 {
+		return nil
+	}
+	labels := make([]string, 0, len(event.Tags))
+	seen := make(map[string]struct{}, len(event.Tags))
+	for _, tag := range event.Tags {
+		label := strings.TrimSpace(tag.Label)
+		if label == "" {
+			label = strings.TrimSpace(tag.Name)
+		}
+		if label == "" {
+			label = strings.TrimSpace(tag.Slug)
+		}
+		if label == "" {
+			continue
+		}
+		key := strings.ToLower(label)
+		if _, ok := seen[key]; ok {
+			continue
+		}
+		seen[key] = struct{}{}
+		labels = append(labels, label)
+	}
+	return labels
 }

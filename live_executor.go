@@ -8,6 +8,12 @@ import (
 	"time"
 )
 
+// FeeScheduleResolver resolves a token ID to its Gamma market metadata, which
+// is the only source of the protocol feeSchedule. *GammaService implements it.
+type FeeScheduleResolver interface {
+	GetMarketByTokenID(ctx context.Context, tokenID string) (*Market, error)
+}
+
 // LiveExecutor signs and submits a real CLOB order, then reconciles the fill.
 // It is deliberately conservative: hard USD cap, FAK order type by default,
 // no resting orders left behind after the reconciliation window.
@@ -19,6 +25,7 @@ type LiveExecutor struct {
 	pollTimeout   time.Duration
 	stopFile      string
 	allowedTokens []string
+	feeResolver   FeeScheduleResolver
 }
 
 func NewLiveExecutor(clob *CLOBService, signer *OrderSigner, orderType string, maxOrderUSD float64) (*LiveExecutor, error) {
@@ -65,6 +72,13 @@ func (l *LiveExecutor) SetStopFile(path string) {
 
 func (l *LiveExecutor) SetAllowedTokens(tokens []string) {
 	l.allowedTokens = append([]string(nil), tokens...)
+}
+
+// SetFeeResolver enables protocol fee estimation. Without it (and without an
+// explicit request fee rate) Execute refuses to size or price an order,
+// because the legacy takerBaseFee is not the fee rate.
+func (l *LiveExecutor) SetFeeResolver(resolver FeeScheduleResolver) {
+	l.feeResolver = resolver
 }
 
 func (l *LiveExecutor) Cancel(ctx context.Context, orderID string) error {
@@ -114,17 +128,22 @@ func (l *LiveExecutor) Execute(ctx context.Context, request OrderRequest) (*Exec
 	if request.MaxCashUSD > 0 && request.MaxCashUSD < maxCash {
 		maxCash = request.MaxCashUSD
 	}
+
+	feeModel, err := l.resolveFeeModel(ctx, request)
+	if err != nil {
+		return nil, err
+	}
+
 	effectiveShares := request.Shares
-	feeMultiplier := 1 + float64(feeRateBps)/10000
-	if maxShares := maxCash / (request.LimitPrice * feeMultiplier) * 0.999; effectiveShares > maxShares {
+	if maxShares := maxSharesForCash(maxCash, request.LimitPrice, feeModel) * 0.999; effectiveShares > maxShares {
 		effectiveShares = maxShares
 	}
 	if effectiveShares <= 0 {
 		return nil, fmt.Errorf("approved cash limit is below one share")
 	}
 
-	// Budget fees inside the hard cap.
-	totalCost := effectiveShares * request.LimitPrice * feeMultiplier
+	// Budget the protocol fee inside the hard cap.
+	totalCost := effectiveShares * (request.LimitPrice + feeModel.FeeForLevel(request.LimitPrice, 1))
 	if totalCost > maxCash+1e-9 {
 		return nil, fmt.Errorf("order cost including fees %.2f exceeds the cash cap %.2f", totalCost, maxCash)
 	}
@@ -220,7 +239,7 @@ func (l *LiveExecutor) Execute(ctx context.Context, request OrderRequest) (*Exec
 	}
 
 	notional := matchedShares * averagePrice
-	fee := notional * float64(feeRateBps) / 10000
+	fee := feeModel.FeeForLevel(averagePrice, matchedShares)
 	cash := -(notional + fee)
 	if side == "SELL" {
 		cash = notional - fee
@@ -235,16 +254,50 @@ func (l *LiveExecutor) Execute(ctx context.Context, request OrderRequest) (*Exec
 		FeeUSD:       fee,
 		CashUSD:      cash,
 		Raw: map[string]interface{}{
-			"exchange_status":  status,
-			"order_type":       l.orderType,
-			"fee_rate_bps":     feeRateBps,
-			"neg_risk":         negRisk,
-			"order_hash":       order.OrderHash,
-			"requested_shares": request.Shares,
-			"effective_shares": effectiveShares,
-			"max_cash_usd":     maxCash,
+			"exchange_status":   status,
+			"order_type":        l.orderType,
+			"fee_rate_bps":      feeRateBps,
+			"fee_schedule_rate": feeModel.Rate,
+			"fee_source":        "fee_schedule",
+			"neg_risk":          negRisk,
+			"order_hash":        order.OrderHash,
+			"requested_shares":  request.Shares,
+			"effective_shares":  effectiveShares,
+			"max_cash_usd":      maxCash,
 		},
 	}, nil
+}
+
+// resolveFeeModel prefers an explicit request rate, then the market's
+// feeSchedule. It fails closed instead of guessing from takerBaseFee.
+func (l *LiveExecutor) resolveFeeModel(ctx context.Context, request OrderRequest) (FeeModel, error) {
+	if request.FeeRateKnown || request.FeeRate > 0 {
+		return FeeModel{Rate: request.FeeRate, Exponent: request.FeeExponent}, nil
+	}
+	if l.feeResolver == nil {
+		return FeeModel{}, fmt.Errorf("fee schedule unavailable: set a FeeScheduleResolver or pass the market's feeSchedule rate; the legacy takerBaseFee is not the fee rate")
+	}
+	market, err := l.feeResolver.GetMarketByTokenID(ctx, request.TokenID)
+	if err != nil {
+		return FeeModel{}, fmt.Errorf("resolve fee schedule: %w", err)
+	}
+	if market == nil || !market.FeeRateKnown {
+		return FeeModel{}, fmt.Errorf("market does not expose a feeSchedule for token %s; refusing to estimate fees from takerBaseFee", request.TokenID)
+	}
+	return FeeModel{Rate: market.FeeRate, Exponent: MarketFeeExponent(*market)}, nil
+}
+
+// maxSharesForCash returns the largest share count whose notional plus the
+// protocol fee fits the cash cap.
+func maxSharesForCash(cashUSD, price float64, fees FeeModel) float64 {
+	if cashUSD <= 0 || price <= 0 || price >= 1 {
+		return 0
+	}
+	costPerShare := price + fees.FeeForLevel(price, 1)
+	if costPerShare <= 0 {
+		return 0
+	}
+	return cashUSD / costPerShare
 }
 
 func isTerminalOrderStatus(status string) bool {

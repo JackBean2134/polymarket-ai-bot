@@ -52,7 +52,7 @@ go run ./cmd -arb-scan 20 -arb-interval 60 -arb-out .\opportunities.jsonl
 go run ./cmd -arb-scan 10 -arb-max-markets 25
 ```
 
-Prices are printed as decimals in `[0, 1]` (Polymarket quotes `0.58`, not `58` cents). `-markets` defaults to excluding near-resolved markets; add `-min-price`, `-max-price`, and `-min-days` for your own universe. The arbitrage scanner uses best asks, visible size and Gamma `takerBaseFee`; it is a measurement tool, not an execution guarantee.
+Prices are printed as decimals in `[0, 1]` (Polymarket quotes `0.58`, not `58` cents). `-markets` defaults to excluding near-resolved markets; add `-min-price`, `-max-price`, and `-min-days` for your own universe. The arbitrage scanner uses best asks, visible size and the market's `feeSchedule`; it is a measurement tool, not an execution guarantee.
 
 ### Arbitrage definitions
 
@@ -61,6 +61,81 @@ Prices are printed as decimals in `[0, 1]` (Polymarket quotes `0.58`, not `58` c
 - `NEGRISK_NO`: buy NO on all N; N-1 pay $1. Opportunity when `sum(noAsk) + fees < N-1`.
 
 The scanner requires every market in the event to be open and fetchable before reporting a basket. It reports `max_baskets` from top-of-book size and per-basket net edge after the configured fee estimate. Use JSONL output to measure how often and how long opportunities survive before building execution.
+
+### Fees
+
+Polymarket charges takers
+
+```text
+fee = shares × rate × p × (1 - p)
+```
+
+where `rate` comes from the market's `feeSchedule.rate` (Crypto 0.07, Sports 0.05, Politics/Finance/Tech/Mentions 0.04, Economics/Culture/Weather/Other 0.05, Geopolitics and World events free). Makers pay nothing. The formula is symmetric around 50¢ and is non-linear in price, so the scanner charges it per price level rather than on the VWAP.
+
+`takerBaseFee` is a legacy field and is **not** the rate: a sports market reports `takerBaseFee: 1000` while its real rate is `0.05`. Treating 1000 as 10% of notional overstated fees by roughly 50× and rejected almost every real basket. When a payload carries no `feeSchedule`, the scanner falls back to the category table above; it never invents a rate from the legacy field.
+
+## Supervised paper autopilot
+
+`-autopilot N` runs N cycles of a narrow autonomous loop. It is **paper only**: it reads public order books, simulates fills against visible levels and never signs or submits an order. It exists to measure whether structural arbitrage is worth building execution for, not to promise returns.
+
+```powershell
+# 5 cycles, 2 minutes apart, $100 budget, $25 per basket, 2c per $1 basket edge floor
+go run ./cmd -autopilot 5 -autopilot-interval 120 -autopilot-budget 100 `
+  -autopilot-max-usd 25 -autopilot-min-edge 0.02 -autopilot-out .\autopilot.jsonl
+
+# Stop it from another window (kill switch is checked before every cycle)
+New-Item .\STOP
+```
+
+Hard brakes, all enforced in code:
+
+| Brake | Behaviour |
+|---|---|
+| `MaxTotalUSD` / `MaxPerEventUSD` | refuses a basket that would exceed the run or event budget |
+| `MaxPerBasketUSD` | caps the cash of one basket |
+| `EventCooldown` | the same event cannot be re-bought immediately |
+| `MaxUnhedgedUSD` | halts once unhedged (partial) leg notional reaches this amount; partials are counted as a total loss |
+| `MaxConsecutiveFailures` | halts after repeated scan or execution failures |
+| `StopFile` | any cycle after the file exists stops the run |
+| Paper-only executor | `NewAutopilot` rejects any executor whose `IsPaper()` is false |
+
+A basket is only recorded when every leg fills completely and the realised VWAP still clears the edge floor. `locked_profit_usd` is locked-in edge, not cash: it is only realised when the market settles, and settlement/rule risk is not modelled. See [RESEARCH.md](RESEARCH.md) for why momentum and order-book heuristics are excluded.
+
+`N` cycles means N full scan-then-sleep rounds, so the run ends by itself; it is not a permanent service. Every cycle appends an `autopilot_cycle` record to `-autopilot-out`, which is what you analyse for opportunity frequency (a cycle with no opportunities writes a record with `opportunities: 0`).
+
+### Reading the result offline
+
+```powershell
+go run ./cmd -autopilot-report .\autopilot.jsonl
+```
+
+The summary reports the observation window, how many cycles saw an opportunity, opportunities per hour, best/median/mean net edge per $1 basket, the notional that was actually available, filled versus aborted baskets, deployed cash, fees, locked edge, naked-leg exposure, and a per-hour rate. `projected_daily_profit_usd` and `projected_daily_return_pct` are only produced when the observed window is at least 24 hours; shorter runs get `projection_warning` instead, because a 10-minute sample cannot estimate a daily rate. `projected_daily_return_pct` is measured against deployed cash, not your budget, so it overstates the return you would earn on idle capital.
+
+`best_binary_cost_usd`, `best_binary_fee_usd` and `best_binary_net_edge_usd` describe the cheapest YES+NO basket in the scan, even when it was not profitable. They answer "how far from an arbitrage were we?" — a best cost of 1.03 means the market is nowhere near a basket, while 0.998 means the edge is real but too thin to clear your threshold.
+
+### Grouping: which markets deserve attention
+
+The same report groups opportunities so you can compare markets:
+
+- `by_category` — grouped by Gamma `category`; real payloads often leave that empty, so the event's tags are mapped onto a fixed canonical list (Sports, Politics, Elections, Crypto, Economy, Geopolitics, World, Culture, Tech, Business, Science, Health, Climate, Weather) by priority, falling back to the first tag and finally `uncategorized`. Each bucket carries opportunity count, share of all opportunities, distinct events, best/median net edge, available notional, filled baskets and locked edge.
+- `by_hour_utc` — cycles grouped by the UTC hour they started in, with opportunities, cycles hit, baskets and locked edge. Hours are UTC, not local time.
+- `top_category` — the bucket with the most scanned opportunities, for a quick read.
+
+Categories come from Polymarket metadata: some events expose neither `category` nor tags, so a large `uncategorized` bucket means the grouping is limited by the data, not by the analysis. Compare `opportunities` and `median_net_edge_usd` across buckets, not just counts: a bucket with many tiny edges is worse than one with a few large ones after fees.
+
+`observation_hours` is wall-clock time between the first cycle start and the last cycle finish. If the machine sleeps mid-cycle, that gap is inflated and every per-hour rate is understated; the report then sets `longest_cycle_minutes` and a `data_quality_warnings` entry instead of pretending the run was continuous.
+
+`verdict` is mechanical, never optimistic:
+
+| Verdict | Meaning |
+|---|---|
+| `NO_DATA` | no completed cycle in the log |
+| `NO_OPPORTUNITY` | arbitrage never cleared the edge floor; this strategy has no business in this market |
+| `NO_EXECUTION` | opportunities existed but no basket completed (depth, partial fills, cooldown, budget) |
+| `NO_EDGE_AFTER_COSTS` | baskets filled but locked no positive edge |
+| `POSITIVE_IN_SAMPLE` | positive locked edge in this window only; an in-sample measurement, not a forecast |
+
+The report never turns the projection into a promise: paper fills assume displayed size is executable and locked edge only becomes cash at settlement.
 
 ## Research pipeline: collect → samples → calibration
 

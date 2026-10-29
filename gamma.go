@@ -30,6 +30,7 @@ type Event struct {
 	ImageURL    string    `json:"image"`
 	Description string    `json:"description"`
 	NegRisk     bool      `json:"negRisk"`
+	Tags        []Tag     `json:"tags"`
 }
 
 type Market struct {
@@ -67,6 +68,10 @@ type Market struct {
 	NegRisk             bool      `json:"neg_risk"`
 	TakerBaseFee        int       `json:"taker_base_fee"`
 	MakerBaseFee        int       `json:"maker_base_fee"`
+	FeesEnabled         bool      `json:"fees_enabled"`
+	FeeRate             float64   `json:"fee_rate"`
+	FeeRateKnown        bool      `json:"fee_rate_known"`
+	FeeExponent         float64   `json:"fee_exponent"`
 	TickSize            float64   `json:"tick_size"`
 	MinOrderSize        float64   `json:"min_order_size"`
 }
@@ -75,42 +80,55 @@ type Market struct {
 // often serialized as strings, so they are decoded through the flexible
 // helpers in decimal.go.
 type gammaMarketRaw struct {
-	ID                  string          `json:"id"`
-	Slug                string          `json:"slug"`
-	Title               string          `json:"title"`
-	Question            string          `json:"question"`
-	Subtitle            string          `json:"subtitle"`
-	EventID             string          `json:"event_id"`
-	Status              string          `json:"status"`
-	OutcomeType         string          `json:"outcomeType"`
-	Outcomes            json.RawMessage `json:"outcomes"`
-	OutcomePrices       json.RawMessage `json:"outcomePrices"`
-	Volume              json.RawMessage `json:"volume"`
-	Volume24hr          json.RawMessage `json:"volume24hr"`
-	OpenInterest        json.RawMessage `json:"openInterest"`
-	Liquidity           json.RawMessage `json:"liquidity"`
-	EndDate             string          `json:"endDate"`
-	EndDateIso          string          `json:"endDateIso"`
-	ClosedTime          string          `json:"closedTime"`
-	Result              string          `json:"result"`
-	Image               string          `json:"image"`
-	Icon                string          `json:"icon"`
-	Description         string          `json:"description"`
-	ResolutionSource    string          `json:"resolutionSource"`
-	UMAResolutionStatus string          `json:"umaResolutionStatus"`
-	GroupItemTitle      string          `json:"groupItemTitle"`
-	ClobTokenIds        json.RawMessage `json:"clobTokenIds"`
-	Active              bool            `json:"active"`
-	Closed              bool            `json:"closed"`
-	AcceptingOrders     bool            `json:"acceptingOrders"`
-	NegRisk             bool            `json:"negRisk"`
-	TakerBaseFee        json.RawMessage `json:"takerBaseFee"`
-	MakerBaseFee        json.RawMessage `json:"makerBaseFee"`
-	TickSize            json.RawMessage `json:"orderPriceMinTickSize"`
-	MinOrderSize        json.RawMessage `json:"orderMinSize"`
+	ID                  string            `json:"id"`
+	Slug                string            `json:"slug"`
+	Title               string            `json:"title"`
+	Question            string            `json:"question"`
+	Subtitle            string            `json:"subtitle"`
+	EventID             string            `json:"event_id"`
+	Status              string            `json:"status"`
+	OutcomeType         string            `json:"outcomeType"`
+	Outcomes            json.RawMessage   `json:"outcomes"`
+	OutcomePrices       json.RawMessage   `json:"outcomePrices"`
+	Volume              json.RawMessage   `json:"volume"`
+	Volume24hr          json.RawMessage   `json:"volume24hr"`
+	OpenInterest        json.RawMessage   `json:"openInterest"`
+	Liquidity           json.RawMessage   `json:"liquidity"`
+	EndDate             string            `json:"endDate"`
+	EndDateIso          string            `json:"endDateIso"`
+	ClosedTime          string            `json:"closedTime"`
+	Result              string            `json:"result"`
+	Image               string            `json:"image"`
+	Icon                string            `json:"icon"`
+	Description         string            `json:"description"`
+	ResolutionSource    string            `json:"resolutionSource"`
+	UMAResolutionStatus string            `json:"umaResolutionStatus"`
+	GroupItemTitle      string            `json:"groupItemTitle"`
+	ClobTokenIds        json.RawMessage   `json:"clobTokenIds"`
+	Active              bool              `json:"active"`
+	Closed              bool              `json:"closed"`
+	AcceptingOrders     bool              `json:"acceptingOrders"`
+	NegRisk             bool              `json:"negRisk"`
+	TakerBaseFee        json.RawMessage   `json:"takerBaseFee"`
+	MakerBaseFee        json.RawMessage   `json:"makerBaseFee"`
+	FeesEnabled         *bool             `json:"feesEnabled"`
+	FeeType             string            `json:"feeType"`
+	FeeSchedule         *gammaFeeSchedule `json:"feeSchedule"`
+	TickSize            json.RawMessage   `json:"orderPriceMinTickSize"`
+	MinOrderSize        json.RawMessage   `json:"orderMinSize"`
 	Events              []struct {
 		ID string `json:"id"`
 	} `json:"events"`
+}
+
+// gammaFeeSchedule is the authoritative fee payload:
+// {"exponent":1,"rate":0.05,"takerOnly":true,"rebateRate":0.15}.
+// takerBaseFee is a legacy field and is NOT the rate.
+type gammaFeeSchedule struct {
+	Exponent   float64 `json:"exponent"`
+	Rate       float64 `json:"rate"`
+	TakerOnly  bool    `json:"takerOnly"`
+	RebateRate float64 `json:"rebateRate"`
 }
 
 func parseGammaTime(value string) time.Time {
@@ -209,6 +227,26 @@ func (m *Market) UnmarshalJSON(data []byte) error {
 		return fmt.Errorf("market %s minOrderSize: %w", raw.ID, err)
 	}
 
+	feesEnabled := raw.FeesEnabled != nil && *raw.FeesEnabled
+	feeRate := 0.0
+	feeRateKnown := false
+	feeExponent := 1.0
+	switch {
+	case raw.FeeSchedule != nil:
+		feesEnabled = true
+		feeRateKnown = true
+		if raw.FeeSchedule.Rate >= 0 {
+			feeRate = raw.FeeSchedule.Rate
+		}
+		if raw.FeeSchedule.Exponent > 0 {
+			feeExponent = raw.FeeSchedule.Exponent
+		}
+	case raw.FeesEnabled != nil && !*raw.FeesEnabled:
+		// Explicitly fee-free market (feesEnabled:false, no schedule).
+		feeRateKnown = true
+		feeRate = 0
+	}
+
 	title := raw.Question
 	if title == "" {
 		title = raw.Title
@@ -284,6 +322,10 @@ func (m *Market) UnmarshalJSON(data []byte) error {
 		NegRisk:             raw.NegRisk,
 		TakerBaseFee:        int(takerFee),
 		MakerBaseFee:        int(makerFee),
+		FeesEnabled:         feesEnabled,
+		FeeRate:             feeRate,
+		FeeRateKnown:        feeRateKnown,
+		FeeExponent:         feeExponent,
 		TickSize:            tickSize,
 		MinOrderSize:        minOrderSize,
 	}
@@ -317,6 +359,7 @@ func (m *Market) BinaryTokenIDs() (yesTokenID, noTokenID string, err error) {
 type Tag struct {
 	ID          string `json:"id"`
 	Slug        string `json:"slug"`
+	Label       string `json:"label"`
 	Name        string `json:"name"`
 	Description string `json:"description"`
 	ImageURL    string `json:"image_url"`
@@ -478,6 +521,7 @@ func (s *GammaService) GetEventTags(ctx context.Context, eventID string) ([]Tag,
 
 type ListMarketsParams struct {
 	EventID      string
+	ClobTokenID  string
 	Slug         string
 	Search       string
 	Category     string
@@ -494,6 +538,27 @@ type ListMarketsParams struct {
 	StartDateMax string
 	EndDateMin   string
 	EndDateMax   string
+}
+
+// GetMarketByTokenID resolves a CLOB token ID to its Gamma market. Gamma
+// supports a clob_token_ids filter; closed markets may return an empty list.
+func (s *GammaService) GetMarketByTokenID(ctx context.Context, tokenID string) (*Market, error) {
+	tokenID = strings.TrimSpace(tokenID)
+	if tokenID == "" {
+		return nil, fmt.Errorf("token ID is required")
+	}
+	resp, err := s.ListMarkets(ctx, &ListMarketsParams{ClobTokenID: tokenID, Limit: 5})
+	if err != nil {
+		return nil, fmt.Errorf("list markets by token: %w", err)
+	}
+	for i := range resp.Markets {
+		for _, candidate := range resp.Markets[i].ClobTokenIDs {
+			if candidate == tokenID {
+				return &resp.Markets[i], nil
+			}
+		}
+	}
+	return nil, fmt.Errorf("no Gamma market found for token %s", tokenID)
 }
 
 type ListMarketsResponse struct {
@@ -529,6 +594,9 @@ func (s *GammaService) ListMarkets(ctx context.Context, params *ListMarketsParam
 	if params != nil {
 		if params.EventID != "" {
 			queryParams["event_id"] = params.EventID
+		}
+		if params.ClobTokenID != "" {
+			queryParams["clob_token_ids"] = params.ClobTokenID
 		}
 		if params.Slug != "" {
 			queryParams["slug"] = params.Slug

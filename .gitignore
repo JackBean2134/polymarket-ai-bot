@@ -43,3 +43,9 @@ Thumbs.db
 # Build output
 build/
 dist/
+
+# Autopilot / scanner runtime output
+autopilot*.jsonl
+opportunities.jsonl
+heartbeat.txt
+STOP

@@ -19,6 +19,12 @@ type OrderRequest struct {
 	MaxCashUSD float64
 	OrderType  string
 	NegRisk    bool
+	// FeeRate/FeeExponent follow the protocol feeSchedule. FeeRateKnown means
+	// the caller resolved the schedule (a zero rate is a valid fee-free market).
+	// When nothing is known, the executor's legacy feeBps is used instead.
+	FeeRate      float64
+	FeeRateKnown bool
+	FeeExponent  float64
 }
 
 // ExecutionFill is the result of an order. CashUSD is negative when cash
@@ -51,9 +57,17 @@ type bookWalkResult struct {
 	VWAP         float64
 }
 
-// WalkOrderBook fills an order against visible book levels. It does not model
-// queue position or latency, but it does model price impact and partial fills.
+// WalkOrderBook fills an order against visible book levels using a legacy
+// basis-point fee. It does not model queue position or latency, but it does
+// model price impact and partial fills.
 func WalkOrderBook(book *OrderBook, side string, shares, limitPrice float64, feeBps int) (bookWalkResult, error) {
+	return WalkOrderBookWithFee(book, side, shares, limitPrice, FeeModel{Bps: feeBps})
+}
+
+// WalkOrderBookWithFee is WalkOrderBook with the protocol fee formula applied
+// per price level. Fees are non-linear in price (p × (1-p)), so charging them
+// on the VWAP alone would misprice deep walks.
+func WalkOrderBookWithFee(book *OrderBook, side string, shares, limitPrice float64, fees FeeModel) (bookWalkResult, error) {
 	if book == nil {
 		return bookWalkResult{}, fmt.Errorf("order book is nil")
 	}
@@ -62,9 +76,6 @@ func WalkOrderBook(book *OrderBook, side string, shares, limitPrice float64, fee
 	}
 	if !validPrice(limitPrice) {
 		return bookWalkResult{}, fmt.Errorf("limit price %f is outside (0,1)", limitPrice)
-	}
-	if feeBps < 0 {
-		feeBps = 0
 	}
 
 	side = strings.ToUpper(strings.TrimSpace(side))
@@ -81,6 +92,7 @@ func WalkOrderBook(book *OrderBook, side string, shares, limitPrice float64, fee
 	remaining := shares
 	notional := 0.0
 	filled := 0.0
+	fee := 0.0
 	for _, level := range levels {
 		if remaining <= 1e-9 {
 			break
@@ -97,13 +109,13 @@ func WalkOrderBook(book *OrderBook, side string, shares, limitPrice float64, fee
 		take := math.Min(level.Size, remaining)
 		filled += take
 		notional += take * level.Price
+		fee += fees.FeeForLevel(level.Price, take)
 		remaining -= take
 	}
 
 	if filled <= 0 {
 		return bookWalkResult{}, fmt.Errorf("no executable liquidity at limit %f", limitPrice)
 	}
-	fee := notional * float64(feeBps) / 10000
 	return bookWalkResult{
 		FilledShares: filled,
 		NotionalUSD:  notional,
@@ -145,9 +157,23 @@ func (p *PaperExecutor) Execute(ctx context.Context, request OrderRequest) (*Exe
 		return nil, fmt.Errorf("get order book: %w", err)
 	}
 
+	fees := FeeModel{Bps: p.feeBps}
+	if request.FeeRateKnown || request.FeeRate > 0 {
+		fees = FeeModel{Rate: request.FeeRate, Exponent: request.FeeExponent}
+	}
+
 	shares := request.Shares
 	if request.MaxCashUSD > 0 {
 		feeMultiplier := 1 + float64(p.feeBps)/10000
+		if fees.Rate > 0 {
+			exponent := fees.Exponent
+			if exponent <= 0 {
+				exponent = 1
+			}
+			// p^e × (1-p)^e peaks at p = 0.5, which bounds the fee share.
+			worstCase := math.Pow(0.5, exponent) * math.Pow(0.5, exponent)
+			feeMultiplier = 1 + fees.Rate*worstCase
+		}
 		maxShares := request.MaxCashUSD / (request.LimitPrice * feeMultiplier) * 0.999
 		if shares > maxShares {
 			shares = maxShares
@@ -157,7 +183,7 @@ func (p *PaperExecutor) Execute(ctx context.Context, request OrderRequest) (*Exe
 		return nil, fmt.Errorf("approved cash limit is below one share")
 	}
 
-	walk, err := WalkOrderBook(book, side, shares, request.LimitPrice, p.feeBps)
+	walk, err := WalkOrderBookWithFee(book, side, shares, request.LimitPrice, fees)
 	if err != nil {
 		return nil, err
 	}

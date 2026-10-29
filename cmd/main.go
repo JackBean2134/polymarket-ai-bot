@@ -20,6 +20,7 @@ type cliOptions struct {
 	configPath        string
 	backtestPath      string
 	calibratePath     string
+	autopilotReport   string
 	calibrationBins   int
 	collectResolved   int
 	collectPageSize   int
@@ -53,6 +54,16 @@ type cliOptions struct {
 	arbInterval       int
 	arbConcurrency    int
 	arbMaxMarkets     int
+	autopilotCycles   int
+	autopilotInterval int
+	autopilotScan     int
+	autopilotMinEdge  float64
+	autopilotMaxUSD   float64
+	autopilotBudget   float64
+	autopilotEventUSD float64
+	autopilotUnhedged float64
+	autopilotCooldown int
+	autopilotOut      string
 	liveToken         string
 	liveSide          string
 	liveShares        float64
@@ -113,6 +124,17 @@ func main() {
 	flag.IntVar(&options.arbInterval, "arb-interval", 0, "Repeat -arb-scan every N seconds until interrupted (0 = once)")
 	flag.IntVar(&options.arbConcurrency, "arb-concurrency", 4, "Concurrent event scans for -arb-scan")
 	flag.IntVar(&options.arbMaxMarkets, "arb-max-markets", 40, "Maximum markets to fetch per event (baskets require the full event)")
+	flag.IntVar(&options.autopilotCycles, "autopilot", 0, "Run N supervised paper-only arbitrage cycles (0 = disabled)")
+	flag.IntVar(&options.autopilotInterval, "autopilot-interval", 120, "Seconds between autopilot cycles")
+	flag.IntVar(&options.autopilotScan, "autopilot-scan", 20, "Events scanned per autopilot cycle")
+	flag.Float64Var(&options.autopilotMinEdge, "autopilot-min-edge", 0.02, "Minimum net edge per $1 basket payout")
+	flag.Float64Var(&options.autopilotMaxUSD, "autopilot-max-usd", 25, "Maximum cash per basket")
+	flag.Float64Var(&options.autopilotBudget, "autopilot-budget", 100, "Total cash budget for the autopilot run")
+	flag.Float64Var(&options.autopilotEventUSD, "autopilot-max-event-usd", 25, "Maximum cash per event")
+	flag.Float64Var(&options.autopilotUnhedged, "autopilot-max-unhedged", 25, "Halt once unhedged leg notional reaches this amount")
+	flag.IntVar(&options.autopilotCooldown, "autopilot-cooldown", 300, "Seconds before the same event can be traded again")
+	flag.StringVar(&options.autopilotOut, "autopilot-out", "", "Append autopilot decisions as JSONL to this file")
+	flag.StringVar(&options.autopilotReport, "autopilot-report", "", "Summarise an -autopilot-out JSONL file offline")
 	flag.StringVar(&options.liveToken, "live-order", "", "Token ID for a live order (requires explicit confirmation)")
 	flag.StringVar(&options.liveSide, "live-side", "BUY", "Live order side: BUY or SELL")
 	flag.Float64Var(&options.liveShares, "live-shares", 0, "Live order size in conditional token shares")
@@ -159,6 +181,14 @@ func run(options cliOptions) error {
 		return prettyPrint(report)
 	}
 
+	if options.autopilotReport != "" {
+		summary, err := polymarket.SummarizeAutopilotLogFile(options.autopilotReport)
+		if err != nil {
+			return err
+		}
+		return prettyPrint(summary)
+	}
+
 	if options.buildSamples {
 		offsets, err := parseSampleOffsets(options.sampleOffsets)
 		if err != nil {
@@ -184,7 +214,7 @@ func run(options cliOptions) error {
 		options.showStatus, options.showMetrics, options.showPositions,
 		options.pauseTrading, options.resumeTrading,
 		options.listMarkets > 0, options.marketID != "", options.wallet != "",
-		options.arbScan > 0, options.liveToken != "", options.liveCancel != "",
+		options.arbScan > 0, options.autopilotCycles > 0, options.liveToken != "", options.liveCancel != "",
 		options.collectResolved > 0,
 	} {
 		if selected {
@@ -192,7 +222,7 @@ func run(options cliOptions) error {
 		}
 	}
 	if selectedCommands > 1 {
-		return errors.New("choose only one status, metrics, positions, pause, resume, markets, market, wallet, arb-scan, live-order, live-cancel, or collect-resolved command")
+		return errors.New("choose only one status, metrics, positions, pause, resume, markets, market, wallet, arb-scan, autopilot, live-order, live-cancel, or collect-resolved command")
 	}
 
 	config, err := loadConfig(options.configPath)
@@ -217,6 +247,8 @@ func run(options cliOptions) error {
 		return runWallet(config, options.wallet)
 	case options.arbScan > 0:
 		return runArbScan(config, options)
+	case options.autopilotCycles > 0:
+		return runAutopilot(config, options)
 	case options.liveToken != "":
 		return runLiveOrder(config, options)
 	case options.liveCancel != "":
@@ -544,13 +576,15 @@ func runArbScan(config *polymarket.Config, options cliOptions) error {
 			if len(result.Opportunities) > 0 {
 				best = result.Opportunities[0].NetProfitUSD
 			}
-			fmt.Printf("%s events=%d negRiskEvents=%d books=%d opps=%d bestNetProfit=%.4f\n",
+			fmt.Printf("%s events=%d negRiskEvents=%d books=%d opps=%d bestNetProfit=%.4f bestBinaryCost=%.3f bestBinaryNet=%.4f\n",
 				result.FinishedAt.Format(time.RFC3339),
 				result.Stats.EventsScanned,
 				result.Stats.EventsWithNegRisk,
 				result.Stats.BooksFetched,
 				result.Stats.Opportunities,
 				best,
+				result.Stats.BestBinaryCostUSD,
+				result.Stats.BestBinaryNetEdgeUSD,
 			)
 		}
 
@@ -563,6 +597,43 @@ func runArbScan(config *polymarket.Config, options cliOptions) error {
 		case <-time.After(time.Duration(options.arbInterval) * time.Second):
 		}
 	}
+}
+
+func runAutopilot(config *polymarket.Config, options cliOptions) error {
+	client := newClient(config)
+	scanner := polymarket.NewArbitrageScanner(client)
+	scanner.SetConcurrency(options.arbConcurrency)
+	scanner.SetMaxMarketsPerEvent(options.arbMaxMarkets)
+
+	// PaperExecutor walks the live book but never signs or submits an order.
+	executor := polymarket.NewPaperExecutor(polymarket.NewCLOBService(client), 0)
+	bot, err := polymarket.NewAutopilot(scanner, executor, polymarket.AutopilotConfig{
+		ScanEvents:             options.autopilotScan,
+		Interval:               time.Duration(options.autopilotInterval) * time.Second,
+		CycleTimeout:           120 * time.Second,
+		MinNetEdgeUSD:          options.autopilotMinEdge,
+		MaxPerBasketUSD:        options.autopilotMaxUSD,
+		MaxTotalUSD:            options.autopilotBudget,
+		MaxPerEventUSD:         options.autopilotEventUSD,
+		MaxUnhedgedUSD:         options.autopilotUnhedged,
+		MaxCycles:              options.autopilotCycles,
+		MaxConsecutiveFailures: 10,
+		EventCooldown:          time.Duration(options.autopilotCooldown) * time.Second,
+		StopFile:               config.Trading.StopFile,
+		HeartbeatFile:          config.Trading.HeartbeatFile,
+		DecisionLog:            options.autopilotOut,
+	})
+	if err != nil {
+		return err
+	}
+	defer bot.Close()
+
+	fmt.Fprintln(os.Stderr, "autopilot is PAPER ONLY: it reads public books, simulates fills and never sends an order")
+	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt)
+	defer stop()
+
+	report := bot.Run(ctx)
+	return prettyPrint(report)
 }
 
 func appendJSONL(path string, value interface{}) error {
@@ -660,6 +731,34 @@ func runLiveOrder(config *polymarket.Config, options cliOptions) error {
 		return fmt.Errorf("get fee rate: %w", err)
 	}
 
+	// takerBaseFee above is the legacy signing value, not the fee rate. Resolve
+	// the real schedule so the preview shows what the protocol will charge.
+	gamma := polymarket.NewGammaService(client)
+	market, marketErr := gamma.GetMarketByTokenID(ctx, options.liveToken)
+	feeInfo := map[string]interface{}{"source": "unavailable"}
+	estimatedFee := 0.0
+	estimatedTotal := notional
+	switch {
+	case marketErr != nil:
+		feeInfo["error"] = marketErr.Error()
+	case market == nil || !market.FeeRateKnown:
+		feeInfo["error"] = "market does not expose a feeSchedule"
+	default:
+		exponent := polymarket.MarketFeeExponent(*market)
+		feeInfo = map[string]interface{}{
+			"source":                "gamma.feeSchedule",
+			"rate":                  market.FeeRate,
+			"exponent":              exponent,
+			"fees_enabled":          market.FeesEnabled,
+			"legacy_taker_base_fee": market.TakerBaseFee,
+		}
+		estimatedFee = polymarket.TakerFeeUSD(options.livePrice, options.liveShares, market.FeeRate, exponent)
+		estimatedTotal = notional + estimatedFee
+	}
+	if estimatedTotal > options.liveMaxUSD+1e-9 {
+		return fmt.Errorf("order cost including the protocol fee %.2f exceeds live-max-usd %.2f", estimatedTotal, options.liveMaxUSD)
+	}
+
 	order, err := signer.BuildSignedOrder(options.liveToken, side, options.liveShares, options.livePrice, tickSize, feeBps, negRisk)
 	if err != nil {
 		return err
@@ -675,6 +774,9 @@ func runLiveOrder(config *polymarket.Config, options cliOptions) error {
 		"max_usd":            options.liveMaxUSD,
 		"tick_size":          tickSize,
 		"fee_rate_bps":       feeBps,
+		"taker_fee":          feeInfo,
+		"estimated_fee":      estimatedFee,
+		"estimated_total":    estimatedTotal,
 		"neg_risk":           negRisk,
 		"signer":             signer.Address(),
 		"funder":             signer.Funder(),
@@ -699,6 +801,7 @@ func runLiveOrder(config *polymarket.Config, options cliOptions) error {
 	}
 	executor.SetStopFile(config.Trading.StopFile)
 	executor.SetAllowedTokens(config.Trading.AllowedTokens)
+	executor.SetFeeResolver(polymarket.NewGammaService(client))
 	fill, err := executor.Execute(ctx, polymarket.OrderRequest{
 		TokenID:    options.liveToken,
 		Side:       side,
