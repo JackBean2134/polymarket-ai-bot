@@ -157,7 +157,7 @@ func TestVerifyAllowanceStates(t *testing.T) {
 
 	// No checker configured: skipped, not failed.
 	report := &LiveVerifyReport{}
-	verifyAllowance(context.Background(), report, market, request, 0.5, LiveVerifyDeps{Config: config})
+	verifyAllowance(context.Background(), report, market, request, 0.5, "BUY", LiveVerifyDeps{Config: config})
 	if len(report.Checks) != 1 || report.Checks[0].Status != VerifySkip {
 		t.Fatalf("expected a skip without an RPC, got %+v", report.Checks)
 	}
@@ -170,7 +170,7 @@ func TestVerifyAllowanceStates(t *testing.T) {
 		}, nil
 	}}
 	report = &LiveVerifyReport{}
-	verifyAllowance(context.Background(), report, market, request, 0.5, deps)
+	verifyAllowance(context.Background(), report, market, request, 0.5, "BUY", deps)
 	if len(report.Checks) != 3 {
 		t.Fatalf("expected three allowance checks, got %+v", report.Checks)
 	}
@@ -196,7 +196,7 @@ func TestVerifyAllowanceStates(t *testing.T) {
 		}, nil
 	}
 	report = &LiveVerifyReport{}
-	verifyAllowance(context.Background(), report, market, request, 0.5, deps)
+	verifyAllowance(context.Background(), report, market, request, 0.5, "BUY", deps)
 	for _, check := range report.Checks {
 		if check.Status != VerifyPass {
 			t.Fatalf("expected all allowance checks to pass, got %+v", check)
@@ -208,9 +208,77 @@ func TestVerifyAllowanceStates(t *testing.T) {
 		return nil, errors.New("rpc down")
 	}
 	report = &LiveVerifyReport{}
-	verifyAllowance(context.Background(), report, market, request, 0.5, deps)
+	verifyAllowance(context.Background(), report, market, request, 0.5, "BUY", deps)
 	if len(report.Checks) != 1 || report.Checks[0].Status != VerifyWarn {
 		t.Fatalf("rpc errors should warn, got %+v", report.Checks)
+	}
+
+	// A SELL ignores USDC and blocks on missing CTF approval instead.
+	deps.Allowances = func(ctx context.Context, chainID int64, owner, exchange string, requiredUSD float64) (*AllowanceResult, error) {
+		return &AllowanceResult{USDCAllowance: 0, USDCBalance: 0, RequiredUSD: requiredUSD, USDCSufficient: false, BalanceEnough: false, CTFApproved: false}, nil
+	}
+	report = &LiveVerifyReport{}
+	verifyAllowance(context.Background(), report, market, request, 0.5, "SELL", deps)
+	if len(report.Checks) != 3 {
+		t.Fatalf("expected three checks on a SELL, got %+v", report.Checks)
+	}
+	if report.Checks[0].Name != "allowance.usdc" || report.Checks[0].Status != VerifySkip {
+		t.Fatalf("USDC allowance is irrelevant for a SELL, got %+v", report.Checks[0])
+	}
+	if report.Checks[1].Name != "balance.usdc" || report.Checks[1].Status != VerifySkip {
+		t.Fatalf("USDC balance is irrelevant for a SELL, got %+v", report.Checks[1])
+	}
+	if report.Checks[2].Name != "allowance.ctf" || report.Checks[2].Status != VerifyFail {
+		t.Fatalf("missing CTF approval must block a SELL, got %+v", report.Checks[2])
+	}
+}
+
+func TestVerifyPositionStates(t *testing.T) {
+	config := verifyTestConfig(t)
+	config.Polymarket.WalletAddress = "0x00000000000000000000000000000000000000aa"
+	request := OrderRequest{TokenID: "123", Shares: 5}
+
+	report := &LiveVerifyReport{}
+	verifyPosition(context.Background(), report, request, "BUY", LiveVerifyDeps{Config: config})
+	if len(report.Checks) != 1 || report.Checks[0].Status != VerifySkip {
+		t.Fatalf("expected a skip without an RPC, got %+v", report.Checks)
+	}
+
+	deps := LiveVerifyDeps{Config: config, Positions: func(ctx context.Context, chainID int64, owner, tokenID string) (float64, error) {
+		return 2, nil
+	}}
+	report = &LiveVerifyReport{}
+	verifyPosition(context.Background(), report, request, "SELL", deps)
+	if report.Checks[0].Status != VerifyFail {
+		t.Fatalf("selling more than held must fail, got %+v", report.Checks[0])
+	}
+	report.finish()
+	if report.ConfigReady {
+		t.Fatal("a position shortfall must block readiness")
+	}
+
+	deps.Positions = func(ctx context.Context, chainID int64, owner, tokenID string) (float64, error) {
+		return 10, nil
+	}
+	report = &LiveVerifyReport{}
+	verifyPosition(context.Background(), report, request, "SELL", deps)
+	if report.Checks[0].Status != VerifyPass {
+		t.Fatalf("sufficient position must pass, got %+v", report.Checks[0])
+	}
+
+	report = &LiveVerifyReport{}
+	verifyPosition(context.Background(), report, request, "BUY", deps)
+	if report.Checks[0].Status != VerifyPass || !strings.Contains(report.Checks[0].Detail, "informational") {
+		t.Fatalf("a BUY position check is informational, got %+v", report.Checks[0])
+	}
+
+	deps.Positions = func(ctx context.Context, chainID int64, owner, tokenID string) (float64, error) {
+		return 0, errors.New("rpc down")
+	}
+	report = &LiveVerifyReport{}
+	verifyPosition(context.Background(), report, request, "SELL", deps)
+	if report.Checks[0].Status != VerifyWarn {
+		t.Fatalf("rpc errors should warn, got %+v", report.Checks[0])
 	}
 }
 

@@ -720,6 +720,9 @@ func runLiveVerify(config *polymarket.Config, options cliOptions) error {
 		Allowances: func(ctx context.Context, chainID int64, owner, exchange string, requiredUSD float64) (*polymarket.AllowanceResult, error) {
 			return polymarket.CheckTradingAllowances(ctx, rpc, chainID, owner, exchange, requiredUSD)
 		},
+		Positions: func(ctx context.Context, chainID int64, owner, tokenID string) (float64, error) {
+			return polymarket.CheckCTFBalance(ctx, rpc, chainID, owner, tokenID)
+		},
 	}, polymarket.OrderRequest{
 		TokenID:    token,
 		Side:       side,

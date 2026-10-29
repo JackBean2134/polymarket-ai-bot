@@ -23,7 +23,7 @@ go run ./cmd -live-verify <TOKEN_ID> -live-shares 5 -live-max-usd 5
 
 Read-only. Prints one `pass` / `warn` / `fail` / `skip` row for the kill switch, live switches, token whitelist, L2 credentials, signer/POLY_ADDRESS match, wallet model, market tradability, minimum order, tick alignment, `feeSchedule`, the legacy `takerBaseFee` mismatch, book depth and signability, then summarises with `config_ready`, `market_ready` and `ready_for_small_live_test`.
 
-It signs locally to prove the order is buildable but never posts. Allowance checks read USDC `allowance(owner, exchange)`, USDC `balanceOf(owner)` and CTF `isApprovedForAll(owner, exchange)` through `eth_call` on a public Polygon RPC: default `https://polygon-bor-rpc.publicnode.com`, override with `-polygon-rpc` or `POLYMARKET_POLYGON_RPC`/`POLYGON_RPC_URL`. It selects the negRisk exchange automatically, treats an RPC error as a warning, blocks readiness when the allowance or balance cannot cover the order, and warns when CTF approval is missing.
+It signs locally to prove the order is buildable but never posts. Allowance checks read USDC `allowance(owner, exchange)`, USDC `balanceOf(owner)`, CTF `isApprovedForAll(owner, exchange)` and the CTF `balanceOf(owner, tokenId)` position through `eth_call` on a public Polygon RPC: default `https://polygon-bor-rpc.publicnode.com`, override with `-polygon-rpc` or `POLYMARKET_POLYGON_RPC`/`POLYGON_RPC_URL`. It selects the negRisk exchange automatically, treats an RPC error as a warning, blocks readiness when the allowance or balance cannot cover the order, and fails a SELL that exceeds the held position.
 
 ## 3. What is NOT verified / not implemented
 
@@ -170,3 +170,103 @@ This uses the L2 credentials and `DELETE /order`. The live executor also cancels
 Create a file named `STOP` (or whatever `trading.stop_file` points to) to make the next live order and the next `-arb-scan` round fail closed. Delete it only after you have inspected the state.
 
 `-arb-scan -arb-interval` writes `trading.heartbeat_file` after each successful scan. A watchdog should alert if the file is older than 15 minutes.
+
+## 12. First $5 order, step by step
+
+**Step 1 — read-only pre-flight** (no key needed for the public checks):
+
+```powershell
+$env:POLYMARKET_WALLET_ADDRESS = '0x...'          # signer EOA
+$env:POLYMARKET_FUNDER_ADDRESS = '0x...'          # only for signature types 1/2
+go run ./cmd -live-verify <TOKEN_ID> -live-shares 5 -live-max-usd 5
+```
+
+Fix every `fail` before continuing (`credentials.*` and signing checks may still be `skip` without a key).
+
+**Step 2 — create `polymarket_config.json`** (gitignored; never commit it):
+
+```json
+{
+  "polymarket": {
+    "wallet_address": "0x...",
+    "funder_address": "0x...",
+    "signature_type": 1,
+    "chain_id": 137
+  },
+  "trading": {
+    "enabled": true,
+    "mode": "live",
+    "allow_live": true,
+    "allowed_tokens": ["<TOKEN_ID>"],
+    "stop_file": "STOP",
+    "heartbeat_file": "heartbeat.txt"
+  }
+}
+```
+
+**Step 3 — credentials come from the environment only**:
+
+```powershell
+$env:POLYMARKET_API_KEY = '...'
+$env:POLYMARKET_API_SECRET = '...'
+$env:POLYMARKET_PASSPHRASE = '...'
+$env:POLYMARKET_PRIVATE_KEY = '0x...'
+$env:POLYMARKET_ALLOW_LIVE = '1'
+```
+
+**Step 4 — re-run the pre-flight** until `config_ready` and `market_ready` are both `true` and `ready_for_small_live_test` is `true`.
+
+**Step 5 — sign without sending**:
+
+```powershell
+go run ./cmd -live-order <TOKEN_ID> -live-shares 5 -live-price 0.10 -live-max-usd 5
+```
+
+Check the preview: `signer`/`funder` match your wallet model, `fee_rate_bps` matches the market, `taker_fee.rate` matches the `feeSchedule`, and an `order_hash` is printed.
+
+**Step 6 — send exactly one $5 FAK order**:
+
+```powershell
+go run ./cmd -live-order <TOKEN_ID> -live-shares 5 -live-price 0.10 -live-max-usd 5 `
+  -live-dry-run=false -live-confirm=I_UNDERSTAND
+```
+
+The CLI prints the preview, waits 2 seconds (Ctrl+C aborts), posts, polls `size_matched` for up to 8 seconds and cancels any remainder.
+
+**Step 7 — cancel by id if anything looks wrong**:
+
+```powershell
+go run ./cmd -live-cancel <ORDER_ID>
+```
+
+**Step 8 — reconcile before sizing up**: compare the fill with `-wallet 0x...` positions and with `-live-verify` balances. If the fill or fee differs from the estimate, stop and investigate; do not send a second order to "fix" it.
+
+Create a `STOP` file at any point to block the next order.
+
+## 13. RPC endpoints for allowance and balance checks
+
+`-live-verify` reads chain state with `eth_call`. Keyless public endpoints work but are rate limited:
+
+| Endpoint | Status |
+|---|---|
+| `https://polygon-bor-rpc.publicnode.com` | default |
+| `https://polygon.drpc.org` | keyless |
+| `https://1rpc.io/matic` | keyless |
+| `https://polygon-rpc.com` | returns 401 (needs a key) |
+
+For regular use, create a free endpoint (Alchemy, Infura, QuickNode, Ankr) and point the tool at it:
+
+```powershell
+$env:POLYMARKET_POLYGON_RPC = 'https://polygon-mainnet.g.alchemy.com/v2/<KEY>'
+go run ./cmd -live-verify <TOKEN_ID> -live-shares 5
+```
+
+or pass `-polygon-rpc <URL>` (`POLYGON_RPC_URL` is also honoured as a fallback).
+
+Rules:
+
+- The key is part of the URL, so treat it as a secret: keep it in the environment, never in the repo.
+- One `-live-verify` run makes four calls: USDC allowance, USDC balance, CTF approval, CTF position.
+- An RPC failure becomes a `warn`, never a fake `pass`.
+- Only Polygon mainnet (137) is supported; other chains report `skip`.
+

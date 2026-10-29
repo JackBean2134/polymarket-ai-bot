@@ -21,6 +21,7 @@ const (
 
 	erc20AllowanceSelector        = "0xdd62ed3e" // allowance(address,address)
 	erc20BalanceOfSelector        = "0x70a08231" // balanceOf(address)
+	erc1155BalanceOfSelector      = "0x00fdd58e" // balanceOf(address,uint256)
 	erc1155ApprovedForAllSelector = "0xe985e9c5" // isApprovedForAll(address,address)
 
 	// DefaultPolygonRPC is a keyless public endpoint. polygon-rpc.com now
@@ -197,6 +198,58 @@ func CheckTradingAllowances(ctx context.Context, caller EthCaller, chainID int64
 func usdcToFloat(amount *big.Int) float64 {
 	value, _ := new(big.Float).Quo(new(big.Float).SetInt(amount), big.NewFloat(1e6)).Float64()
 	return value
+}
+
+// CheckCTFBalance reads the ERC-1155 outcome-token balance for one token ID.
+// Polymarket outcome tokens use 6 decimals, like USDC.
+func CheckCTFBalance(ctx context.Context, caller EthCaller, chainID int64, owner, tokenID string) (float64, error) {
+	if caller == nil {
+		return 0, fmt.Errorf("no RPC caller configured")
+	}
+	if chainID != ChainPolygon {
+		return 0, fmt.Errorf("CTF balance checks are implemented for Polygon mainnet (137) only, got chain %d", chainID)
+	}
+	ownerArg, err := encodeAddressArg(strings.TrimSpace(owner))
+	if err != nil {
+		return 0, fmt.Errorf("owner: %w", err)
+	}
+	idArg, err := encodeUint256Arg(tokenID)
+	if err != nil {
+		return 0, fmt.Errorf("token id: %w", err)
+	}
+	raw, err := caller.EthCall(ctx, PolygonCTF, erc1155BalanceOfSelector+ownerArg+idArg)
+	if err != nil {
+		return 0, fmt.Errorf("read CTF balance: %w", err)
+	}
+	shares, err := parseHexUint256(raw)
+	if err != nil {
+		return 0, fmt.Errorf("parse CTF balance: %w", err)
+	}
+	return usdcToFloat(shares), nil
+}
+
+// encodeUint256Arg encodes a base-10 integer (Polymarket token IDs are
+// decimal strings) as a 32-byte ABI word.
+func encodeUint256Arg(value string) (string, error) {
+	trimmed := strings.TrimSpace(value)
+	if trimmed == "" {
+		return "", fmt.Errorf("empty integer")
+	}
+	number, ok := new(big.Int).SetString(trimmed, 10)
+	if !ok {
+		return "", fmt.Errorf("%q is not a base-10 integer", value)
+	}
+	if number.Sign() < 0 {
+		return "", fmt.Errorf("%q is negative", value)
+	}
+	if number.BitLen() > 256 {
+		return "", fmt.Errorf("%q exceeds uint256", value)
+	}
+	hexValue := number.Text(16)
+	if len(hexValue) > 64 {
+		return "", fmt.Errorf("%q exceeds uint256", value)
+	}
+	return strings.Repeat("0", 64-len(hexValue)) + hexValue, nil
 }
 
 func validateHexAddress(address string) error {

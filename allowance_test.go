@@ -143,6 +143,62 @@ func TestCheckTradingAllowancesDistinguishesBalance(t *testing.T) {
 	}
 }
 
+func TestEncodeUint256Arg(t *testing.T) {
+	cases := map[string]string{
+		"0":   strings.Repeat("0", 64),
+		"1":   strings.Repeat("0", 63) + "1",
+		"255": strings.Repeat("0", 62) + "ff",
+		"20006732765674855733524007935991362439352594042415161039767275461950712817548": "",
+	}
+	for input, want := range cases {
+		got, err := encodeUint256Arg(input)
+		if err != nil {
+			t.Fatalf("%q: %v", input, err)
+		}
+		if len(got) != 64 {
+			t.Fatalf("%q: expected 64 hex chars, got %d", input, len(got))
+		}
+		if want != "" && got != want {
+			t.Fatalf("%q: expected %s, got %s", input, want, got)
+		}
+	}
+	for _, bad := range []string{"", "-1", "0x10", "abc", strings.Repeat("9", 90)} {
+		if _, err := encodeUint256Arg(bad); err == nil {
+			t.Fatalf("expected %q to be rejected", bad)
+		}
+	}
+}
+
+func TestCheckCTFBalance(t *testing.T) {
+	owner := "0x00000000000000000000000000000000000000aa"
+	tokenID := "12345"
+	// 12.345678 shares in 6-decimal units.
+	caller := &fakeEthCaller{handler: func(to, data string) string {
+		if to != PolygonCTF {
+			t.Fatalf("unexpected contract %s", to)
+		}
+		if !strings.HasPrefix(data, erc1155BalanceOfSelector) {
+			t.Fatalf("unexpected selector in %s", data)
+		}
+		return "0xbc614e" // 12345678
+	}}
+
+	shares, err := CheckCTFBalance(context.Background(), caller, ChainPolygon, owner, tokenID)
+	if err != nil {
+		t.Fatalf("check: %v", err)
+	}
+	if shares < 12.345677 || shares > 12.345679 {
+		t.Fatalf("expected 12.345678 shares, got %f", shares)
+	}
+
+	if _, err := CheckCTFBalance(context.Background(), &fakeEthCaller{}, ChainAmoy, owner, tokenID); err == nil {
+		t.Fatal("non-Polygon chains must be rejected")
+	}
+	if _, err := CheckCTFBalance(context.Background(), &fakeEthCaller{}, ChainPolygon, owner, "not-a-number"); err == nil {
+		t.Fatal("invalid token id must be rejected")
+	}
+}
+
 func TestValidateHexAddress(t *testing.T) {
 	if err := validateHexAddress("0x2791Bca1f2de4661ED88A30C99A7a9449Aa84174"); err != nil {
 		t.Fatalf("valid address rejected: %v", err)

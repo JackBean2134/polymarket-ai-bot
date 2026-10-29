@@ -46,6 +46,9 @@ type LiveVerifyReport struct {
 // warning by the verifier, not a blocker, because it may be an RPC outage.
 type AllowanceChecker func(ctx context.Context, chainID int64, owner, exchange string, requiredUSD float64) (*AllowanceResult, error)
 
+// PositionChecker reads the ERC-1155 outcome-token balance for one token.
+type PositionChecker func(ctx context.Context, chainID int64, owner, tokenID string) (float64, error)
+
 // LiveVerifyDeps are the collaborators the verifier may use. Signer is optional:
 // without it the signing check is skipped instead of failing.
 type LiveVerifyDeps struct {
@@ -56,6 +59,7 @@ type LiveVerifyDeps struct {
 	Signer     *OrderSigner
 	EnvLive    bool
 	Allowances AllowanceChecker
+	Positions  PositionChecker
 }
 
 // VerifyLiveOrder runs read-only pre-flight checks. It builds and hashes a
@@ -293,10 +297,61 @@ func verifyMarket(ctx context.Context, report *LiveVerifyReport, market *Market,
 			"signed dry-run ok: hash %s, makerAmount %s, takerAmount %s", signed.OrderHash, signed.MakerAmount, signed.TakerAmount))
 	}
 
-	verifyAllowance(ctx, report, market, request, price, deps)
+	verifyAllowance(ctx, report, market, request, price, side, deps)
+	verifyPosition(ctx, report, request, side, deps)
 }
 
-func verifyAllowance(ctx context.Context, report *LiveVerifyReport, market *Market, request OrderRequest, price float64, deps LiveVerifyDeps) {
+// resolveOwner returns the address that actually holds funds and tokens:
+// the proxy/safe funder when configured, otherwise the signer wallet.
+func resolveOwner(config *Config, signer *OrderSigner) string {
+	if config == nil {
+		return ""
+	}
+	if funder := strings.TrimSpace(config.Polymarket.FunderAddress); funder != "" {
+		return funder
+	}
+	if wallet := strings.TrimSpace(config.Polymarket.WalletAddress); wallet != "" {
+		return wallet
+	}
+	if signer != nil {
+		return signer.Address()
+	}
+	return ""
+}
+
+func verifyPosition(ctx context.Context, report *LiveVerifyReport, request OrderRequest, side string, deps LiveVerifyDeps) {
+	if deps.Positions == nil {
+		report.record("config", "position.ctf", VerifySkip,
+			"no RPC configured; pass -polygon-rpc or set POLYGON_RPC_URL to read outcome-token balances")
+		return
+	}
+	owner := resolveOwner(deps.Config, deps.Signer)
+	if owner == "" {
+		report.record("config", "position.ctf", VerifySkip, "no funder or wallet address to check")
+		return
+	}
+
+	held, err := deps.Positions(ctx, deps.Config.Polymarket.ChainID, owner, request.TokenID)
+	if err != nil {
+		report.record("config", "position.ctf", VerifyWarn, fmt.Sprintf("could not read the outcome-token balance: %v", err))
+		return
+	}
+
+	if strings.EqualFold(side, "SELL") {
+		if held+1e-9 >= request.Shares {
+			report.record("config", "position.ctf", VerifyPass,
+				fmt.Sprintf("holds %.6f shares, selling %.0f", held, request.Shares))
+		} else {
+			report.record("config", "position.ctf", VerifyFail,
+				fmt.Sprintf("holds only %.6f shares but the order sells %.0f", held, request.Shares))
+		}
+		return
+	}
+	report.record("config", "position.ctf", VerifyPass,
+		fmt.Sprintf("holds %.6f shares of this outcome token (informational for a BUY)", held))
+}
+
+func verifyAllowance(ctx context.Context, report *LiveVerifyReport, market *Market, request OrderRequest, price float64, side string, deps LiveVerifyDeps) {
 	if deps.Allowances == nil {
 		report.record("config", "allowance.usdc", VerifySkip,
 			"no RPC configured; pass -polygon-rpc or set POLYGON_RPC_URL to verify USDC/CTF approvals")
@@ -313,13 +368,7 @@ func verifyAllowance(ctx context.Context, report *LiveVerifyReport, market *Mark
 		exchange = contract.negRisk
 	}
 
-	owner := strings.TrimSpace(deps.Config.Polymarket.FunderAddress)
-	if owner == "" {
-		owner = strings.TrimSpace(deps.Config.Polymarket.WalletAddress)
-	}
-	if owner == "" && deps.Signer != nil {
-		owner = deps.Signer.Address()
-	}
+	owner := resolveOwner(deps.Config, deps.Signer)
 	if owner == "" {
 		report.record("config", "allowance.usdc", VerifySkip, "no funder or wallet address to check")
 		return
@@ -335,22 +384,33 @@ func verifyAllowance(ctx context.Context, report *LiveVerifyReport, market *Mark
 		report.record("config", "allowance.usdc", VerifyWarn, fmt.Sprintf("could not read allowances: %v", err))
 		return
 	}
-	if result.USDCSufficient {
+	selling := strings.EqualFold(side, "SELL")
+	if selling {
+		// A SELL receives USDC; it needs the CTF position and operator approval,
+		// not a USDC allowance or balance.
+		report.record("config", "allowance.usdc", VerifySkip, "not required for a SELL")
+		report.record("config", "balance.usdc", VerifySkip, "not required for a SELL")
+	} else if result.USDCSufficient {
 		report.record("config", "allowance.usdc", VerifyPass,
 			fmt.Sprintf("USDC allowance %.6f >= required %.6f for %s", result.USDCAllowance, result.RequiredUSD, result.Exchange))
 	} else {
 		report.record("config", "allowance.usdc", VerifyFail,
 			fmt.Sprintf("USDC allowance %.6f < required %.6f for %s; approve USDC to the exchange contract", result.USDCAllowance, result.RequiredUSD, result.Exchange))
 	}
-	if result.BalanceEnough {
-		report.record("config", "balance.usdc", VerifyPass,
-			fmt.Sprintf("USDC balance %.6f >= required %.6f", result.USDCBalance, result.RequiredUSD))
-	} else {
-		report.record("config", "balance.usdc", VerifyFail,
-			fmt.Sprintf("USDC balance %.6f < required %.6f in %s; fund this wallet before trading", result.USDCBalance, result.RequiredUSD, owner))
+	if !selling {
+		if result.BalanceEnough {
+			report.record("config", "balance.usdc", VerifyPass,
+				fmt.Sprintf("USDC balance %.6f >= required %.6f", result.USDCBalance, result.RequiredUSD))
+		} else {
+			report.record("config", "balance.usdc", VerifyFail,
+				fmt.Sprintf("USDC balance %.6f < required %.6f in %s; fund this wallet before trading", result.USDCBalance, result.RequiredUSD, owner))
+		}
 	}
 	if result.CTFApproved {
 		report.record("config", "allowance.ctf", VerifyPass, "CTF isApprovedForAll(exchange) = true")
+	} else if selling {
+		report.record("config", "allowance.ctf", VerifyFail,
+			"CTF isApprovedForAll(exchange) = false; the exchange cannot transfer your outcome tokens for a SELL")
 	} else {
 		report.record("config", "allowance.ctf", VerifyWarn,
 			"CTF isApprovedForAll(exchange) = false; a BUY can still settle but selling or merging needs setApprovalForAll")
