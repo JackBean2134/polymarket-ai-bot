@@ -42,15 +42,20 @@ type LiveVerifyReport struct {
 	Note        string        `json:"note"`
 }
 
+// AllowanceChecker reads on-chain approvals. Returning an error is treated as a
+// warning by the verifier, not a blocker, because it may be an RPC outage.
+type AllowanceChecker func(ctx context.Context, chainID int64, owner, exchange string, requiredUSD float64) (*AllowanceResult, error)
+
 // LiveVerifyDeps are the collaborators the verifier may use. Signer is optional:
 // without it the signing check is skipped instead of failing.
 type LiveVerifyDeps struct {
-	Config  *Config
-	Client  *Client
-	CLOB    *CLOBService
-	Gamma   *GammaService
-	Signer  *OrderSigner
-	EnvLive bool
+	Config     *Config
+	Client     *Client
+	CLOB       *CLOBService
+	Gamma      *GammaService
+	Signer     *OrderSigner
+	EnvLive    bool
+	Allowances AllowanceChecker
 }
 
 // VerifyLiveOrder runs read-only pre-flight checks. It builds and hashes a
@@ -288,8 +293,61 @@ func verifyMarket(ctx context.Context, report *LiveVerifyReport, market *Market,
 			"signed dry-run ok: hash %s, makerAmount %s, takerAmount %s", signed.OrderHash, signed.MakerAmount, signed.TakerAmount))
 	}
 
-	report.record("market", "allowance", VerifySkip,
-		"on-chain USDC/CTF allowance cannot be checked without an RPC call; the exchange rejects the order when approvals are missing")
+	verifyAllowance(ctx, report, market, request, price, deps)
+}
+
+func verifyAllowance(ctx context.Context, report *LiveVerifyReport, market *Market, request OrderRequest, price float64, deps LiveVerifyDeps) {
+	if deps.Allowances == nil {
+		report.record("config", "allowance.usdc", VerifySkip,
+			"no RPC configured; pass -polygon-rpc or set POLYGON_RPC_URL to verify USDC/CTF approvals")
+		return
+	}
+	chainID := deps.Config.Polymarket.ChainID
+	contract, ok := contractsByChain[chainID]
+	if !ok {
+		report.record("config", "allowance.usdc", VerifySkip, fmt.Sprintf("no exchange contracts known for chain %d", chainID))
+		return
+	}
+	exchange := contract.exchange
+	if market.NegRisk {
+		exchange = contract.negRisk
+	}
+
+	owner := strings.TrimSpace(deps.Config.Polymarket.FunderAddress)
+	if owner == "" {
+		owner = strings.TrimSpace(deps.Config.Polymarket.WalletAddress)
+	}
+	if owner == "" && deps.Signer != nil {
+		owner = deps.Signer.Address()
+	}
+	if owner == "" {
+		report.record("config", "allowance.usdc", VerifySkip, "no funder or wallet address to check")
+		return
+	}
+
+	required := request.Shares * price
+	if market.FeeRateKnown {
+		required += TakerFeeUSD(price, request.Shares, market.FeeRate, MarketFeeExponent(*market))
+	}
+
+	result, err := deps.Allowances(ctx, chainID, owner, exchange, required)
+	if err != nil {
+		report.record("config", "allowance.usdc", VerifyWarn, fmt.Sprintf("could not read allowances: %v", err))
+		return
+	}
+	if result.USDCSufficient {
+		report.record("config", "allowance.usdc", VerifyPass,
+			fmt.Sprintf("USDC allowance %.6f >= required %.6f for %s", result.USDCAllowance, result.RequiredUSD, result.Exchange))
+	} else {
+		report.record("config", "allowance.usdc", VerifyFail,
+			fmt.Sprintf("USDC allowance %.6f < required %.6f for %s; approve USDC to the exchange contract", result.USDCAllowance, result.RequiredUSD, result.Exchange))
+	}
+	if result.CTFApproved {
+		report.record("config", "allowance.ctf", VerifyPass, "CTF isApprovedForAll(exchange) = true")
+	} else {
+		report.record("config", "allowance.ctf", VerifyWarn,
+			"CTF isApprovedForAll(exchange) = false; a BUY can still settle but selling or merging needs setApprovalForAll")
+	}
 }
 
 func feeCheck(market *Market, shares, price float64) VerifyCheck {

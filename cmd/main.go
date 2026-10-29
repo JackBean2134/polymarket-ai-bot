@@ -66,6 +66,7 @@ type cliOptions struct {
 	autopilotOut      string
 	liveToken         string
 	liveVerify        string
+	polygonRPC        string
 	liveSide          string
 	liveShares        float64
 	livePrice         float64
@@ -138,6 +139,7 @@ func main() {
 	flag.StringVar(&options.autopilotReport, "autopilot-report", "", "Summarise an -autopilot-out JSONL file offline")
 	flag.StringVar(&options.liveToken, "live-order", "", "Token ID for a live order (requires explicit confirmation)")
 	flag.StringVar(&options.liveVerify, "live-verify", "", "Run read-only pre-flight checks for a token (never sends an order)")
+	flag.StringVar(&options.polygonRPC, "polygon-rpc", os.Getenv("POLYMARKET_POLYGON_RPC"), "Polygon JSON-RPC endpoint for -live-verify allowance checks")
 	flag.StringVar(&options.liveSide, "live-side", "BUY", "Live order side: BUY or SELL")
 	flag.Float64Var(&options.liveShares, "live-shares", 0, "Live order size in conditional token shares")
 	flag.Float64Var(&options.livePrice, "live-price", 0, "Live order limit price (decimal, e.g. 0.10)")
@@ -702,6 +704,12 @@ func runLiveVerify(config *polymarket.Config, options cliOptions) error {
 	envLive := strings.EqualFold(strings.TrimSpace(os.Getenv("POLYMARKET_ALLOW_LIVE")), "1") ||
 		strings.EqualFold(strings.TrimSpace(os.Getenv("POLYMARKET_ALLOW_LIVE")), "true")
 
+	rpcURL := strings.TrimSpace(options.polygonRPC)
+	if rpcURL == "" {
+		rpcURL = strings.TrimSpace(os.Getenv("POLYGON_RPC_URL"))
+	}
+	rpc := polymarket.NewRPCClient(rpcURL)
+
 	report, err := polymarket.VerifyLiveOrder(ctx, polymarket.LiveVerifyDeps{
 		Config:  config,
 		Client:  client,
@@ -709,6 +717,9 @@ func runLiveVerify(config *polymarket.Config, options cliOptions) error {
 		Gamma:   polymarket.NewGammaService(client),
 		Signer:  signer,
 		EnvLive: envLive,
+		Allowances: func(ctx context.Context, chainID int64, owner, exchange string, requiredUSD float64) (*polymarket.AllowanceResult, error) {
+			return polymarket.CheckTradingAllowances(ctx, rpc, chainID, owner, exchange, requiredUSD)
+		},
 	}, polymarket.OrderRequest{
 		TokenID:    token,
 		Side:       side,

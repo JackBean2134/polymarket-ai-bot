@@ -23,13 +23,13 @@ go run ./cmd -live-verify <TOKEN_ID> -live-shares 5 -live-max-usd 5
 
 Read-only. Prints one `pass` / `warn` / `fail` / `skip` row for the kill switch, live switches, token whitelist, L2 credentials, signer/POLY_ADDRESS match, wallet model, market tradability, minimum order, tick alignment, `feeSchedule`, the legacy `takerBaseFee` mismatch, book depth and signability, then summarises with `config_ready`, `market_ready` and `ready_for_small_live_test`.
 
-It signs locally to prove the order is buildable but never posts. The allowance check is always `skip`: it needs an RPC call this repository does not make, and the exchange will reject the order if approvals are missing.
+It signs locally to prove the order is buildable but never posts. Allowance checks read USDC `allowance(owner, exchange)` and CTF `isApprovedForAll(owner, exchange)` through `eth_call` on a public Polygon RPC: default `https://polygon-bor-rpc.publicnode.com`, override with `-polygon-rpc` or `POLYMARKET_POLYGON_RPC`/`POLYGON_RPC_URL`. It selects the negRisk exchange automatically, treats an RPC error as a warning, and reports a zero/non-zero CTF approval rather than guessing. It does not read your USDC balance.
 
 ## 3. What is NOT verified / not implemented
 
 - A real authenticated POST with your credentials. Only the dry-run signature and public endpoints have been exercised in this environment.
 - Exact fill VWAP per trade. The live executor uses the limit price (or order price) conservatively; reconcile trades in the UI/API for accounting.
-- On-chain balance/allowance checks. The exchange will reject the order if USDC/CTF approvals are missing.
+- On-chain USDC balance. Allowance and CTF approval are read by `-live-verify`; the balance itself is not.
 - Persistent order/position ledger, stop-loss, automatic cancellation outside the reconciliation window, WebSocket user feeds.
 - Multi-order/basket execution. The arbitrage scanner is measurement-only.
 - Fee schedules are resolved through Gamma's `clob_token_ids` filter. If that lookup fails (network, or a market with neither `feeSchedule` nor `feesEnabled`), live execution fails closed; it never falls back to treating `takerBaseFee` as a rate.

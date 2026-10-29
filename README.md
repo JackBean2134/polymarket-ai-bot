@@ -230,7 +230,7 @@ go run ./cmd -live-order <TOKEN_ID> -live-shares 5 -live-price 0.10 -live-max-us
 
 Sending also requires `trading.mode=live`, `trading.enabled=true`, `trading.allow_live=true`, `POLYMARKET_ALLOW_LIVE=1`, a non-empty `trading.allowed_tokens` whitelist containing the token, an absent STOP file, `-live-confirm=I_UNDERSTAND`, a hard per-order cap of at most $25, and a two-second abort window. Do not use a wallet with funds until you have read [LIVE_TRADING.md](LIVE_TRADING.md) and verified allowances/funder/signature type.
 
-`-live-verify` is the safe first step: it prints one `pass` / `warn` / `fail` / `skip` row per check plus `config_ready`, `market_ready` and `ready_for_small_live_test`. Signing and wallet-model checks are skipped when no private key is set, so it works before you hand over any credential. The allowance check is always `skip`: it needs an RPC call this repository does not make.
+`-live-verify` is the safe first step: it prints one `pass` / `warn` / `fail` / `skip` row per check plus `config_ready`, `market_ready` and `ready_for_small_live_test`. Signing and wallet-model checks are skipped when no private key is set, so it works before you hand over any credential. Allowance checks read USDC `allowance` and CTF `isApprovedForAll` over a public Polygon RPC (default `https://polygon-bor-rpc.publicnode.com`; override with `-polygon-rpc` or `POLYGON_RPC_URL`). An RPC failure is a warning, not a blocker.
 
 The unattended path has the article's safety gates: `STOP` file kill switch, token whitelist, single-order cap, daily-loss/drawdown halts, heartbeat file for `-arb-scan -arb-interval`, and a `-live-cancel` command.
 

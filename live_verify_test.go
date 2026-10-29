@@ -1,6 +1,8 @@
 package polymarket
 
 import (
+	"context"
+	"errors"
 	"os"
 	"path/filepath"
 	"strings"
@@ -144,6 +146,62 @@ func TestFeeChecksUseScheduleNotLegacyBaseFee(t *testing.T) {
 	free := &Market{FeeRateKnown: true, FeeRate: 0}
 	if got := feeCheck(free, 100, 0.5); got.Status != VerifyPass || !strings.Contains(got.Detail, "0.0000") {
 		t.Fatalf("fee-free market must pass with zero fee, got %+v", got)
+	}
+}
+
+func TestVerifyAllowanceStates(t *testing.T) {
+	config := verifyTestConfig(t)
+	config.Polymarket.WalletAddress = "0x00000000000000000000000000000000000000aa"
+	market := &Market{FeeRateKnown: true, FeeRate: 0.05, FeeExponent: 1}
+	request := OrderRequest{Shares: 100, LimitPrice: 0.5}
+
+	// No checker configured: skipped, not failed.
+	report := &LiveVerifyReport{}
+	verifyAllowance(context.Background(), report, market, request, 0.5, LiveVerifyDeps{Config: config})
+	if len(report.Checks) != 1 || report.Checks[0].Status != VerifySkip {
+		t.Fatalf("expected a skip without an RPC, got %+v", report.Checks)
+	}
+
+	// Insufficient USDC: blocker; CTF approval missing: warning.
+	deps := LiveVerifyDeps{Config: config, Allowances: func(ctx context.Context, chainID int64, owner, exchange string, requiredUSD float64) (*AllowanceResult, error) {
+		return &AllowanceResult{USDCAllowance: 1, RequiredUSD: requiredUSD, USDCSufficient: false, CTFApproved: false, Exchange: exchange}, nil
+	}}
+	report = &LiveVerifyReport{}
+	verifyAllowance(context.Background(), report, market, request, 0.5, deps)
+	if len(report.Checks) != 2 {
+		t.Fatalf("expected two allowance checks, got %+v", report.Checks)
+	}
+	if report.Checks[0].Status != VerifyFail || report.Checks[0].Group != "config" {
+		t.Fatalf("insufficient USDC must block, got %+v", report.Checks[0])
+	}
+	if report.Checks[1].Status != VerifyWarn {
+		t.Fatalf("missing CTF approval must warn, got %+v", report.Checks[1])
+	}
+	report.finish()
+	if report.ConfigReady {
+		t.Fatal("an allowance failure must make config_ready false")
+	}
+
+	// Sufficient and approved: both pass.
+	deps.Allowances = func(ctx context.Context, chainID int64, owner, exchange string, requiredUSD float64) (*AllowanceResult, error) {
+		return &AllowanceResult{USDCAllowance: 100, RequiredUSD: requiredUSD, USDCSufficient: true, CTFApproved: true}, nil
+	}
+	report = &LiveVerifyReport{}
+	verifyAllowance(context.Background(), report, market, request, 0.5, deps)
+	for _, check := range report.Checks {
+		if check.Status != VerifyPass {
+			t.Fatalf("expected all allowance checks to pass, got %+v", check)
+		}
+	}
+
+	// RPC failure is a warning, not a blocker.
+	deps.Allowances = func(ctx context.Context, chainID int64, owner, exchange string, requiredUSD float64) (*AllowanceResult, error) {
+		return nil, errors.New("rpc down")
+	}
+	report = &LiveVerifyReport{}
+	verifyAllowance(context.Background(), report, market, request, 0.5, deps)
+	if len(report.Checks) != 1 || report.Checks[0].Status != VerifyWarn {
+		t.Fatalf("rpc errors should warn, got %+v", report.Checks)
 	}
 }
 
