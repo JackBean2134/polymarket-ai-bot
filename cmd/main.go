@@ -21,6 +21,8 @@ type cliOptions struct {
 	backtestPath      string
 	calibratePath     string
 	autopilotReport   string
+	secretsAudit      bool
+	secretsRoot       string
 	calibrationBins   int
 	collectResolved   int
 	collectPageSize   int
@@ -137,6 +139,8 @@ func main() {
 	flag.IntVar(&options.autopilotCooldown, "autopilot-cooldown", 300, "Seconds before the same event can be traded again")
 	flag.StringVar(&options.autopilotOut, "autopilot-out", "", "Append autopilot decisions as JSONL to this file")
 	flag.StringVar(&options.autopilotReport, "autopilot-report", "", "Summarise an -autopilot-out JSONL file offline")
+	flag.BoolVar(&options.secretsAudit, "secrets-audit", false, "Scan the working tree for committed credentials (offline, never prints values)")
+	flag.StringVar(&options.secretsRoot, "secrets-root", ".", "Directory to scan for -secrets-audit")
 	flag.StringVar(&options.liveToken, "live-order", "", "Token ID for a live order (requires explicit confirmation)")
 	flag.StringVar(&options.liveVerify, "live-verify", "", "Run read-only pre-flight checks for a token (never sends an order)")
 	flag.StringVar(&options.polygonRPC, "polygon-rpc", os.Getenv("POLYMARKET_POLYGON_RPC"), "Polygon JSON-RPC endpoint for -live-verify allowance checks")
@@ -157,6 +161,14 @@ func main() {
 }
 
 func run(options cliOptions) error {
+	if options.secretsAudit {
+		audit, err := polymarket.AuditSecrets(options.secretsRoot)
+		if err != nil {
+			return err
+		}
+		return prettyPrint(audit)
+	}
+
 	if options.backtestPath != "" {
 		file, err := os.Open(options.backtestPath)
 		if err != nil {

@@ -189,6 +189,16 @@ The tool buys YES when the model probability exceeds the market YES price by at 
 
 `fee-bps` is a simplified fee assumption applied to stake, and `slippage-bps` adversely adjusts the entry price by a percentage of the quoted outcome price. These are configurable approximations, not Polymarket's exact fee schedule or an order-book execution model. The backtest does not model overlapping positions, market impact, partial fills, liquidity limits, funding, or correlated exposure. Use conservative costs and genuinely out-of-sample, timestamped data.
 
+### Keeping credentials out of the repo
+
+`-secrets-audit` walks the working tree, reports committed-looking credentials **without printing their values**, lists which `POLYMARKET_*` variables are present (length only), checks that `polymarket_config.json` is git-ignored, and lists the hosts the client contacts. It is offline.
+
+```powershell
+go run ./cmd -secrets-audit
+```
+
+The private key and API secret come from the environment only; `polymarket_config.json` should contain addresses and switches, never secrets. If a key was ever pasted into a file or shell history, rotate it on Polymarket — deleting it from the working tree does not remove it from Git history.
+
 ## Configuration and current limits
 
 `polymarket_config.example.json` contains an empty template. Copy it to `polymarket_config.json` only if you need to inspect configuration behavior; that local filename is git-ignored.
