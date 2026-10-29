@@ -164,18 +164,24 @@ func TestVerifyAllowanceStates(t *testing.T) {
 
 	// Insufficient USDC: blocker; CTF approval missing: warning.
 	deps := LiveVerifyDeps{Config: config, Allowances: func(ctx context.Context, chainID int64, owner, exchange string, requiredUSD float64) (*AllowanceResult, error) {
-		return &AllowanceResult{USDCAllowance: 1, RequiredUSD: requiredUSD, USDCSufficient: false, CTFApproved: false, Exchange: exchange}, nil
+		return &AllowanceResult{
+			USDCAllowance: 1, USDCBalance: 1, RequiredUSD: requiredUSD,
+			USDCSufficient: false, BalanceEnough: false, CTFApproved: false, Exchange: exchange,
+		}, nil
 	}}
 	report = &LiveVerifyReport{}
 	verifyAllowance(context.Background(), report, market, request, 0.5, deps)
-	if len(report.Checks) != 2 {
-		t.Fatalf("expected two allowance checks, got %+v", report.Checks)
+	if len(report.Checks) != 3 {
+		t.Fatalf("expected three allowance checks, got %+v", report.Checks)
 	}
 	if report.Checks[0].Status != VerifyFail || report.Checks[0].Group != "config" {
-		t.Fatalf("insufficient USDC must block, got %+v", report.Checks[0])
+		t.Fatalf("insufficient USDC allowance must block, got %+v", report.Checks[0])
 	}
-	if report.Checks[1].Status != VerifyWarn {
-		t.Fatalf("missing CTF approval must warn, got %+v", report.Checks[1])
+	if report.Checks[1].Name != "balance.usdc" || report.Checks[1].Status != VerifyFail {
+		t.Fatalf("insufficient balance must block, got %+v", report.Checks[1])
+	}
+	if report.Checks[2].Status != VerifyWarn {
+		t.Fatalf("missing CTF approval must warn, got %+v", report.Checks[2])
 	}
 	report.finish()
 	if report.ConfigReady {
@@ -184,7 +190,10 @@ func TestVerifyAllowanceStates(t *testing.T) {
 
 	// Sufficient and approved: both pass.
 	deps.Allowances = func(ctx context.Context, chainID int64, owner, exchange string, requiredUSD float64) (*AllowanceResult, error) {
-		return &AllowanceResult{USDCAllowance: 100, RequiredUSD: requiredUSD, USDCSufficient: true, CTFApproved: true}, nil
+		return &AllowanceResult{
+			USDCAllowance: 100, USDCBalance: 100, RequiredUSD: requiredUSD,
+			USDCSufficient: true, BalanceEnough: true, CTFApproved: true,
+		}, nil
 	}
 	report = &LiveVerifyReport{}
 	verifyAllowance(context.Background(), report, market, request, 0.5, deps)

@@ -10,6 +10,7 @@ import (
 
 type fakeEthCaller struct {
 	responses map[string]string
+	handler   func(to, data string) string
 	err       error
 	calls     []string
 }
@@ -18,6 +19,9 @@ func (f *fakeEthCaller) EthCall(ctx context.Context, to string, data string) (st
 	f.calls = append(f.calls, to+":"+data)
 	if f.err != nil {
 		return "", f.err
+	}
+	if f.handler != nil {
+		return f.handler(to, data), nil
 	}
 	if value, ok := f.responses[to]; ok {
 		return value, nil
@@ -86,8 +90,8 @@ func TestCheckTradingAllowances(t *testing.T) {
 	if !result.CTFApproved {
 		t.Fatalf("expected CTF approval: %+v", result)
 	}
-	if len(caller.calls) != 2 {
-		t.Fatalf("expected two eth_calls, got %d", len(caller.calls))
+	if len(caller.calls) != 3 {
+		t.Fatalf("expected three eth_calls (allowance, approval, balance), got %d", len(caller.calls))
 	}
 
 	caller = &fakeEthCaller{responses: map[string]string{PolygonUSDCE: "0x0", PolygonCTF: "0x0"}}
@@ -107,6 +111,35 @@ func TestCheckTradingAllowances(t *testing.T) {
 	}
 	if _, err := CheckTradingAllowances(context.Background(), &fakeEthCaller{}, ChainPolygon, "0xbad", exchange, 1); err == nil {
 		t.Fatal("invalid owner must be rejected")
+	}
+}
+
+func TestCheckTradingAllowancesDistinguishesBalance(t *testing.T) {
+	owner := "0x00000000000000000000000000000000000000aa"
+	exchange := "0x4bFb41d5B3570DeFd03C39a9A4D8dE6Bd8B8982E"
+
+	caller := &fakeEthCaller{handler: func(to, data string) string {
+		if to == PolygonUSDCE && strings.HasPrefix(data, erc20BalanceOfSelector) {
+			return "0x0" // empty wallet
+		}
+		if to == PolygonUSDCE && strings.HasPrefix(data, erc20AllowanceSelector) {
+			return "0x4c4b40" // 5 USDC approved
+		}
+		return "0x1"
+	}}
+
+	result, err := CheckTradingAllowances(context.Background(), caller, ChainPolygon, owner, exchange, 4.5)
+	if err != nil {
+		t.Fatalf("check: %v", err)
+	}
+	if !result.USDCSufficient {
+		t.Fatalf("allowance should be sufficient: %+v", result)
+	}
+	if result.BalanceEnough || result.USDCBalance != 0 {
+		t.Fatalf("balance should be insufficient: %+v", result)
+	}
+	if len(caller.calls) != 3 {
+		t.Fatalf("expected three calls, got %d", len(caller.calls))
 	}
 }
 

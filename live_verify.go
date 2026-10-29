@@ -342,6 +342,13 @@ func verifyAllowance(ctx context.Context, report *LiveVerifyReport, market *Mark
 		report.record("config", "allowance.usdc", VerifyFail,
 			fmt.Sprintf("USDC allowance %.6f < required %.6f for %s; approve USDC to the exchange contract", result.USDCAllowance, result.RequiredUSD, result.Exchange))
 	}
+	if result.BalanceEnough {
+		report.record("config", "balance.usdc", VerifyPass,
+			fmt.Sprintf("USDC balance %.6f >= required %.6f", result.USDCBalance, result.RequiredUSD))
+	} else {
+		report.record("config", "balance.usdc", VerifyFail,
+			fmt.Sprintf("USDC balance %.6f < required %.6f in %s; fund this wallet before trading", result.USDCBalance, result.RequiredUSD, owner))
+	}
 	if result.CTFApproved {
 		report.record("config", "allowance.ctf", VerifyPass, "CTF isApprovedForAll(exchange) = true")
 	} else {

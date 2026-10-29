@@ -20,6 +20,7 @@ const (
 	PolygonCTF   = "0x4D97DCd97eC945f40cF65F87097ACe5EA0476045"
 
 	erc20AllowanceSelector        = "0xdd62ed3e" // allowance(address,address)
+	erc20BalanceOfSelector        = "0x70a08231" // balanceOf(address)
 	erc1155ApprovedForAllSelector = "0xe985e9c5" // isApprovedForAll(address,address)
 
 	// DefaultPolygonRPC is a keyless public endpoint. polygon-rpc.com now
@@ -106,14 +107,17 @@ func (c *RPCClient) EthCall(ctx context.Context, to string, data string) (string
 	return decoded.Result, nil
 }
 
-// AllowanceResult summarises the on-chain approvals a live order needs.
+// AllowanceResult summarises the on-chain state a live order needs: approval,
+// collateral balance and CTF operator approval.
 type AllowanceResult struct {
 	ChainID        int64   `json:"chain_id"`
 	Owner          string  `json:"owner"`
 	Exchange       string  `json:"exchange"`
 	USDCAllowance  float64 `json:"usdc_allowance"`
+	USDCBalance    float64 `json:"usdc_balance"`
 	RequiredUSD    float64 `json:"required_usd"`
-	USDCSufficient bool    `json:"usdc_sufficient"`
+	USDCSufficient bool    `json:"usdc_allowance_sufficient"`
+	BalanceEnough  bool    `json:"usdc_balance_sufficient"`
 	CTFApproved    bool    `json:"ctf_approved_for_all"`
 }
 
@@ -161,17 +165,38 @@ func CheckTradingAllowances(ctx context.Context, caller EthCaller, chainID int64
 		return nil, fmt.Errorf("parse CTF approval: %w", err)
 	}
 
-	allowanceUSD, _ := new(big.Float).Quo(new(big.Float).SetInt(allowance), big.NewFloat(1e6)).Float64()
+	balanceData, err := encodeSingleAddressCall(erc20BalanceOfSelector, owner)
+	if err != nil {
+		return nil, err
+	}
+	balanceHex, err := caller.EthCall(ctx, PolygonUSDCE, balanceData)
+	if err != nil {
+		return nil, fmt.Errorf("read USDC balance: %w", err)
+	}
+	balance, err := parseHexUint256(balanceHex)
+	if err != nil {
+		return nil, fmt.Errorf("parse USDC balance: %w", err)
+	}
+
+	allowanceUSD := usdcToFloat(allowance)
+	balanceUSD := usdcToFloat(balance)
 
 	return &AllowanceResult{
 		ChainID:        chainID,
 		Owner:          owner,
 		Exchange:       exchange,
 		USDCAllowance:  allowanceUSD,
+		USDCBalance:    balanceUSD,
 		RequiredUSD:    requiredUSD,
 		USDCSufficient: allowanceUSD+1e-9 >= requiredUSD,
+		BalanceEnough:  balanceUSD+1e-9 >= requiredUSD,
 		CTFApproved:    approved.Sign() != 0,
 	}, nil
+}
+
+func usdcToFloat(amount *big.Int) float64 {
+	value, _ := new(big.Float).Quo(new(big.Float).SetInt(amount), big.NewFloat(1e6)).Float64()
+	return value
 }
 
 func validateHexAddress(address string) error {
@@ -195,6 +220,14 @@ func encodeTwoAddressCall(selector, first, second string) (string, error) {
 		return "", err
 	}
 	return selector + a + b, nil
+}
+
+func encodeSingleAddressCall(selector, address string) (string, error) {
+	arg, err := encodeAddressArg(address)
+	if err != nil {
+		return "", err
+	}
+	return selector + arg, nil
 }
 
 func encodeAddressArg(address string) (string, error) {
